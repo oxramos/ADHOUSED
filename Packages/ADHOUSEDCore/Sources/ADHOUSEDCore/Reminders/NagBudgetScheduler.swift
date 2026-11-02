@@ -195,14 +195,15 @@ public enum NagSlotPlanner {
     public static func notificationCopy(for slot: PlannedNagSlot) -> (title: String, body: String) {
         let title: String
         if slot.sequenceIndex == 1 {
-            title = "Ready Now: \(slot.taskTitle)"
+            title = "Due Today: \(slot.taskTitle)"
         } else if slot.sequenceIndex <= 3 {
-            title = "Still Waiting (\(slot.estimatedMinutes)m): \(slot.taskTitle)"
+            title = "Friendly Reminder (\(slot.estimatedMinutes)m): \(slot.taskTitle)"
         } else {
-            title = "Persistent Ping #\(slot.sequenceIndex): \(slot.taskTitle)"
+            title = "Still Open: \(slot.taskTitle)"
         }
 
-        let body = "\(slot.roomTitle) · ~\(slot.estimatedMinutes) min. Re-alerts every \(slot.nagIntervalMinutes)m until marked Done (swiping away won't cancel)."
+        let intervalPhrase = ChoreTask.humanIntervalText(forMinutes: slot.nagIntervalMinutes, prefix: "Reminds every ")
+        let body = "\(slot.roomTitle) · ~\(slot.estimatedMinutes) min · \(intervalPhrase) until marked Done."
         return (title, body)
     }
 }

@@ -14,7 +14,13 @@ struct FreshnessBatteryStreamView: View {
     private var prioritizedStream: [(task: ChoreTask, snapshot: TaskFreshnessSnapshot)] {
         let visible = tasks.filter { task in
             guard !task.isArchived else { return false }
+            if let room = session.selectedRoom, task.room != room {
+                return false
+            }
             if session.lowSpoonsFilterEnabled && !task.isQuickLowSpoonWin {
+                return false
+            }
+            if !session.showEveryoneChores && members.count > 1 && !task.isActionable(forMemberID: activeMember?.id) {
                 return false
             }
             return true
@@ -27,18 +33,17 @@ struct FreshnessBatteryStreamView: View {
         let stillFresh = prioritizedStream.filter { !$0.snapshot.isActionableToday && $0.snapshot.batteryFill > 0.55 }
 
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 HStack(spacing: 7) {
                     Image(systemName: "battery.50percent")
                         .foregroundStyle(theme.warmingColor)
-                    Text(theme.hudTag(theme.isTerminalHUD ? "Battery Stream" : "Freshness Battery Stream"))
+                    Text(session.selectedRoom != nil ? "\(session.selectedRoom!.title) — Battery View" : "Chore Battery Levels")
                         .font(.title3.weight(.heavy))
                         .foregroundStyle(theme.primaryInk)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 6)
-                Text("Sorted by depletion")
+                Text("Lowest first")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(theme.secondaryInk)
             }
@@ -48,10 +53,11 @@ struct FreshnessBatteryStreamView: View {
                     Image(systemName: "battery.100percent.bolt")
                         .font(.title2)
                         .foregroundStyle(theme.freshColor)
-                    Text("Every household chore battery is above 55% charge!")
+                    Text("Every chore in this view is well-charged right now!")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(theme.primaryInk)
-                    Spacer()
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
                 .padding(16)
                 .adhousedCard(highlightTint: theme.freshColor)
@@ -68,21 +74,21 @@ struct FreshnessBatteryStreamView: View {
                 }
             }
 
-            // Auto-dimmed collapsible drawer for Still-Fresh items (>55% charge)
             if !stillFresh.isEmpty {
                 VStack(alignment: .leading, spacing: 11) {
                     Button {
                         HapticsEngine.shared.playMechanicalTap()
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                             showStillFreshDrawer.toggle()
                         }
                     } label: {
                         HStack {
-                            Image(systemName: "sparkles")
+                            Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(theme.freshColor)
-                            Text("Still Charged & Handled (\(stillFresh.count))")
+                            Text("Not Due Yet · Well Charged (\(stillFresh.count))")
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(theme.secondaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
                             Spacer()
                             Image(systemName: showStillFreshDrawer ? "chevron.up" : "chevron.down")
                                 .font(.caption.weight(.bold))
@@ -91,6 +97,7 @@ struct FreshnessBatteryStreamView: View {
                         .padding(14)
                         .adhousedCard(compact: true)
                     }
+                    .buttonStyle(.plain)
 
                     if showStillFreshDrawer {
                         ForEach(stillFresh, id: \.task.id) { pair in
@@ -102,11 +109,11 @@ struct FreshnessBatteryStreamView: View {
                                 activeMember: activeMember,
                                 displayStyle: .batteryStreamRow
                             )
-                            .opacity(0.76)
+                            .opacity(0.82)
                         }
                     }
                 }
-                .padding(.top, 6)
+                .padding(.top, 4)
             }
         }
     }

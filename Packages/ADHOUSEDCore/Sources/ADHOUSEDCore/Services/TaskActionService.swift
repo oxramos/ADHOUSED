@@ -423,6 +423,80 @@ public enum TaskActionService {
         return household
     }
 
+    /// Adds one or more catalog templates to an existing household without overwriting the household's name or members.
+    @discardableResult
+    public static func adoptCatalogTemplates(
+        _ selectedTemplates: [(template: StarterChoreTemplate, seed: InitialFreshnessSeed, assignment: AssignmentMode)],
+        in context: ModelContext,
+        now: Date = .now
+    ) throws -> [ChoreTask] {
+        guard !selectedTemplates.isEmpty else { return [] }
+        let existingHouseholds = try context.fetch(FetchDescriptor<Household>())
+        let household: Household
+        if let first = existingHouseholds.first {
+            household = first
+        } else {
+            let created = Household(name: "Our Home", createdAt: now, updatedAt: now)
+            context.insert(created)
+            household = created
+        }
+
+        let members = try context.fetch(FetchDescriptor<HouseholdMember>(sortBy: [SortDescriptor(\.sortOrder)]))
+        let memberIDs = members.map(\.id)
+        let total = selectedTemplates.count
+        var inserted: [ChoreTask] = []
+
+        for (idx, item) in selectedTemplates.enumerated() {
+            let seededLastDone = StarterCatalogSeeder.initialLastCompletedDate(
+                for: item.template,
+                seed: item.seed,
+                indexInBatch: idx,
+                totalBatchCount: total,
+                now: now
+            )
+
+            let effectiveMode: AssignmentMode = memberIDs.count > 1 ? item.assignment : .anyone
+            let assignedIDs: [UUID]
+            switch effectiveMode {
+            case .anyone:
+                assignedIDs = []
+            case .assigned:
+                assignedIDs = memberIDs.isEmpty ? [] : [memberIDs[idx % memberIDs.count]]
+            case .alternating:
+                assignedIDs = memberIDs
+            }
+
+            let chore = ChoreTask(
+                householdID: household.id,
+                title: item.template.title,
+                iconSymbol: item.template.iconSymbol,
+                room: item.template.room,
+                scheduleMode: item.template.scheduleMode,
+                intervalUnit: item.template.intervalUnit,
+                intervalCount: item.template.intervalCount,
+                fixedRuleKind: .weeklyDays,
+                fixedWeekdays: item.template.fixedWeekdays,
+                lastCompletedAt: seededLastDone,
+                lastCompletedByMemberID: seededLastDone != nil && !memberIDs.isEmpty ? memberIDs[(idx + 1) % memberIDs.count] : nil,
+                energyLevel: item.template.energyLevel,
+                estimatedMinutes: item.template.estimatedMinutes,
+                remindersEnabled: true,
+                nagIntervalMinutes: item.template.suggestedNagMinutes,
+                intensityTier: item.template.suggestedTier,
+                assignmentMode: effectiveMode,
+                assignedMemberIDs: assignedIDs,
+                currentTurnIndex: idx % max(1, memberIDs.count),
+                createdAt: now
+            )
+            context.insert(chore)
+            inserted.append(chore)
+        }
+
+        try context.save()
+        awaitableReconcileAndReloadWidgets(in: context, now: now)
+        return inserted
+    }
+
     public static func awaitableReconcileAndReloadWidgets(in context: ModelContext, now: Date = .now) {
         let bundlePath = Bundle.main.bundlePath
         let isBundledAppOrExtension = bundlePath.hasSuffix(".app") || bundlePath.hasSuffix(".appex")
@@ -432,6 +506,7 @@ public enum TaskActionService {
         }
         #endif
         guard isBundledAppOrExtension else { return }
+        HouseholdCloudSyncService.shared.pushChangesIfConnected(in: context)
         Task { @MainActor in
             await ReminderCoordinator.shared.reconcileAll(in: context, now: now)
         }

@@ -16,9 +16,9 @@ struct SprintTimerOverlayView: View {
         ZStack {
             theme.canvasBackground.ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: 22) {
                 HStack {
-                    Label("BEAT THE CLOCK SPRINT", systemImage: "bolt.badge.clock.fill")
+                    Label("FOCUS TIMER", systemImage: "timer")
                         .font(.caption.weight(.heavy))
                         .tracking(1.0)
                         .foregroundStyle(theme.warmingColor)
@@ -38,13 +38,13 @@ struct SprintTimerOverlayView: View {
                     )
                     .multilineTextAlignment(.center)
 
-                    Text("Turn a boring chore into a quick dopamine race — pinned to your Lock Screen while active.")
+                    Text("Quick countdown timer — stays visible on your Lock Screen while running.")
                         .font(.caption)
                         .foregroundStyle(theme.secondaryInk)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                // Live Animated Countdown Ring
                 TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
                     let active = session.activeSprint?.taskID == task.id ? session.activeSprint : nil
                     let totalSec = Double(active?.durationSeconds ?? (task.sprintDurationMinutes * 60))
@@ -55,37 +55,38 @@ struct SprintTimerOverlayView: View {
 
                     ZStack {
                         Circle()
-                            .stroke(theme.canvasSecondary, lineWidth: 18)
-                            .frame(width: 215, height: 215)
+                            .stroke(theme.canvasSecondary, lineWidth: 16)
+                            .frame(width: 210, height: 210)
 
                         Circle()
                             .trim(from: 0, to: max(0.02, progress))
                             .stroke(
                                 progress > 0.3 ? theme.accentPrimary : theme.dueNowColor,
-                                style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                                style: StrokeStyle(lineWidth: 16, lineCap: .round)
                             )
                             .rotationEffect(.degrees(-90))
-                            .frame(width: 215, height: 215)
+                            .frame(width: 210, height: 210)
                             .animation(.linear(duration: 0.25), value: progress)
 
-                        VStack(spacing: 4) {
-                            Image(systemName: task.iconSymbol)
-                                .font(.title2.weight(.bold))
-                                .foregroundStyle(theme.accentPrimary)
+                        VStack(spacing: 6) {
+                            ChoreIconBadgeView(
+                                iconSymbol: task.iconSymbol,
+                                tint: theme.accentPrimary,
+                                size: 36
+                            )
                             Text(String(format: "%02d:%02d", mins, secs))
-                                .font(.system(size: 46, weight: .black, design: theme.isTerminalHUD ? .monospaced : .rounded))
+                                .font(.system(size: 44, weight: .black, design: theme.isTerminalHUD ? .monospaced : .rounded))
                                 .monospacedDigit()
                                 .foregroundStyle(theme.primaryInk)
-                            Text(remSec > 0 ? "RACING" : "TIME'S UP!")
+                            Text(remSec > 0 ? "IN PROGRESS" : "TIME'S UP")
                                 .font(.caption2.weight(.heavy))
-                                .tracking(1.2)
+                                .tracking(1.1)
                                 .foregroundStyle(theme.secondaryInk)
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 6)
                 }
 
-                // Sprint Duration Switcher Chips
                 HStack(spacing: 10) {
                     ForEach(presetMinutes, id: \.self) { mins in
                         let isCurrent = (session.activeSprint?.durationSeconds ?? (task.sprintDurationMinutes * 60)) == mins * 60
@@ -102,7 +103,7 @@ struct SprintTimerOverlayView: View {
                         .buttonStyle(
                             TactileActionButtonStyle(
                                 fill: isCurrent ? theme.warmingColor : theme.cardSurface,
-                                foreground: isCurrent ? .black : theme.primaryInk
+                                foreground: isCurrent ? Color(hex: "#121317") : theme.primaryInk
                             )
                         )
                     }
@@ -120,8 +121,8 @@ struct SprintTimerOverlayView: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "flag.checkered.2.crossed")
-                            Text("Beat the Clock — Mark Done!")
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Finished — Mark Chore Done!")
                         }
                         .font(.headline.weight(.heavy))
                         .frame(maxWidth: .infinity)
@@ -144,6 +145,6 @@ struct SprintTimerOverlayView: View {
             }
             .padding(22)
         }
-        .presentationDetents([.fraction(0.76), .large])
+        .presentationDetents([.fraction(0.78), .large])
     }
 }

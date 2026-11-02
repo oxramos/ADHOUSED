@@ -7,17 +7,18 @@ import ADHOUSEDCore
 import AlarmKit
 #endif
 
-// MARK: - 1. Sticky Lock Screen Persistent Reminder Live Activity (Tier 2 & Tier 3)
+// MARK: - 1. Sticky Lock Screen Persistent Reminder Live Activity
 
 struct ChoreNagLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ChoreNagActivityAttributes.self) { context in
-            let preset = ThemePreset(rawValue: context.state.themePresetRaw) ?? .warmTactileBento
+            let preset = ThemePreset(rawValue: context.state.themePresetRaw) ?? .quietSanctuary
             let theme = ADHOUSEDThemeTokens.resolve(preset: preset, colorScheme: .dark)
+            let safeSym = ChoreIconCatalog.fallbackSystemSymbol(for: context.attributes.iconSymbol)
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
-                    Image(systemName: context.attributes.iconSymbol)
+                    Image(systemName: safeSym)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(theme.dueNowColor)
 
@@ -36,7 +37,7 @@ struct ChoreNagLiveActivityWidget: Widget {
                         Text(context.attributes.taskTitle)
                             .font(.headline.weight(.heavy))
                             .foregroundStyle(.white)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
 
                     Spacer()
@@ -92,21 +93,22 @@ struct ChoreNagLiveActivityWidget: Widget {
             .activitySystemActionForegroundColor(.white)
 
         } dynamicIsland: { context in
-            DynamicIsland {
+            let safeSym = ChoreIconCatalog.fallbackSystemSymbol(for: context.attributes.iconSymbol)
+            return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: context.attributes.iconSymbol)
+                    Image(systemName: safeSym)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.orange)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("q\(context.state.nagIntervalMinutes)m")
+                    Text(ChoreTask.humanIntervalText(forMinutes: context.state.nagIntervalMinutes))
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(.orange)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(context.attributes.taskTitle)
                         .font(.subheadline.weight(.heavy))
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 10) {
@@ -122,38 +124,38 @@ struct ChoreNagLiveActivityWidget: Widget {
                     }
                 }
             } compactLeading: {
-                Image(systemName: context.attributes.iconSymbol)
+                Image(systemName: safeSym)
                     .foregroundStyle(.orange)
             } compactTrailing: {
-                Text("\(context.attributes.estimatedMinutes)m")
+                Text("~\(context.attributes.estimatedMinutes)m")
                     .font(.caption2.weight(.black))
                     .foregroundStyle(.orange)
             } minimal: {
-                Image(systemName: context.attributes.iconSymbol)
+                Image(systemName: safeSym)
                     .foregroundStyle(.orange)
             }
         }
     }
 }
 
-// MARK: - 2. "Beat the Clock" Sprint Countdown Live Activity
+// MARK: - 2. Focus Timer Countdown Live Activity
 
 struct SprintTimerLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SprintTimerActivityAttributes.self) { context in
             HStack(spacing: 14) {
-                Image(systemName: "bolt.badge.clock.fill")
+                Image(systemName: "timer")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(.yellow)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("BEAT THE CLOCK SPRINT")
+                    Text("FOCUS TIMER")
                         .font(.system(size: 10, weight: .black))
                         .foregroundStyle(.yellow)
                     Text(context.attributes.taskTitle)
                         .font(.subheadline.weight(.heavy))
                         .foregroundStyle(.white)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     Text(timerInterval: context.state.startDate...context.state.targetEndDate, countsDown: true)
                         .font(.title3.weight(.black).monospacedDigit())
                         .foregroundStyle(.white)
@@ -163,7 +165,7 @@ struct SprintTimerLiveActivityWidget: Widget {
 
                 Button(intent: CompleteTaskIntent(taskIDString: context.attributes.taskIDString, fromWidgetUndoable: false)) {
                     VStack(spacing: 2) {
-                        Image(systemName: "flag.checkered")
+                        Image(systemName: "checkmark.circle.fill")
                             .font(.headline.weight(.bold))
                         Text("Done!")
                             .font(.caption2.weight(.heavy))
@@ -191,7 +193,7 @@ struct SprintTimerLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Button(intent: CompleteTaskIntent(taskIDString: context.attributes.taskIDString, fromWidgetUndoable: false)) {
-                        Label("Finished Early — Mark Done!", systemImage: "checkmark.seal.fill")
+                        Label("Finished — Mark Done!", systemImage: "checkmark.seal.fill")
                             .font(.caption.weight(.heavy))
                     }
                 }
@@ -211,7 +213,7 @@ struct SprintTimerLiveActivityWidget: Widget {
     }
 }
 
-// MARK: - 3. AlarmKit Tier-3 Cutoff System Alarm Live Activity Configuration
+// MARK: - 3. AlarmKit Evening Must-Do Alarm Live Activity Configuration
 
 #if canImport(AlarmKit)
 @available(iOS 26.1, *)
@@ -223,12 +225,13 @@ struct ChoreCutoffAlarmLiveActivityWidget: Widget {
                     .font(.title2)
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("ADHOUSED CUTOFF ALARM")
+                    Text("EVENING CHORE ALARM")
                         .font(.system(size: 10, weight: .black))
                         .foregroundStyle(.orange)
-                    Text(context.attributes.metadata?.taskTitle ?? "Critical Household Chore")
+                    Text(context.attributes.metadata?.taskTitle ?? "Household Chore")
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(.white)
+                        .lineLimit(2)
                 }
                 Spacer()
             }
@@ -237,7 +240,7 @@ struct ChoreCutoffAlarmLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.center) {
-                    Text(context.attributes.metadata?.taskTitle ?? "Cutoff Alarm")
+                    Text(context.attributes.metadata?.taskTitle ?? "Evening Alarm")
                         .font(.subheadline.weight(.heavy))
                 }
             } compactLeading: {

@@ -23,21 +23,18 @@ struct TaskEditorSheet: View {
     @State private var estimatedMinutes: Int = 5
 
     @State private var remindersEnabled: Bool = true
-    @State private var nagIntervalMinutes: Int = 45
+    @State private var nagIntervalMinutes: Int = 60
     @State private var intensityTier: ReminderIntensityTier = .stickyLiveActivity
     @State private var alarmCutoffHour: Int = 20
 
     @State private var assignmentMode: AssignmentMode = .anyone
     @State private var selectedOwnerID: UUID? = nil
 
+    @State private var alsoSaveToCatalog: Bool = false
+
     @State private var isChorePausedUntilDate: Bool = false
     @State private var chorePausedUntil: Date = Date.now.addingTimeInterval(2 * 86_400)
 
-    private let quickIcons = [
-        "sparkles", "dishwasher.fill", "washer.fill", "bed.double.fill",
-        "trash.fill", "shower.fill", "pawprint.fill", "leaf.fill",
-        "refrigerator.fill", "fanblades.fill", "sofa.fill", "mug.fill"
-    ]
     private let nagOptions = [15, 30, 45, 60, 120, 180]
     private let minuteOptions = [2, 5, 10, 15, 30]
 
@@ -50,10 +47,13 @@ struct TaskEditorSheet: View {
                     VStack(alignment: .leading, spacing: 18) {
                         titleAndIconCard
                         recurrenceCard
-                        adhdEffortAndTimeCard
+                        effortAndTimeCard
                         persistentReminderCard
                         if members.count > 1 {
                             householdAssignmentCard
+                        }
+                        if existingTask == nil {
+                            saveToCatalogOptionCard
                         }
                         if let existingTask {
                             singleChorePauseCard
@@ -63,7 +63,7 @@ struct TaskEditorSheet: View {
                     .padding(18)
                 }
             }
-            .navigationTitle(existingTask == nil ? "New Household Chore" : "Edit Chore")
+            .navigationTitle(existingTask == nil ? "New Chore or Activity" : "Edit Chore")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -80,21 +80,26 @@ struct TaskEditorSheet: View {
     }
 
     private var titleAndIconCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("CHORE & ROOM")
+        VStack(alignment: .leading, spacing: 14) {
+            Text("NAME, ROOM & ICON")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(theme.secondaryInk)
 
-            TextField("e.g., Wash bedsheets, Scoop litter…", text: $title)
+            TextField("e.g., Wash bedsheets, Water plants, Clean desk…", text: $title)
                 .font(.headline.weight(.bold))
+                .foregroundStyle(theme.primaryInk)
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 12).fill(theme.canvasSecondary))
+                .background(
+                    RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 8 : 12, style: .continuous)
+                        .fill(theme.canvasSecondary)
+                )
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(RoomCategory.allCases) { category in
                         let selected = room == category
                         Button {
+                            HapticsEngine.shared.playMechanicalTap()
                             room = category
                         } label: {
                             HStack(spacing: 5) {
@@ -114,25 +119,10 @@ struct TaskEditorSheet: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(quickIcons, id: \.self) { sym in
-                        Button {
-                            iconSymbol = sym
-                        } label: {
-                            Image(systemName: sym)
-                                .font(.headline)
-                                .frame(width: 38, height: 38)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(iconSymbol == sym ? theme.accentPrimary : theme.canvasSecondary)
-                                )
-                                .foregroundStyle(iconSymbol == sym ? theme.onAccentPrimary : theme.primaryInk)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
+            ChoreIconPickerView(
+                selectedIcon: $iconSymbol,
+                accentTint: theme.roomAccent(for: room)
+            )
         }
         .padding(15)
         .adhousedCard()
@@ -145,14 +135,15 @@ struct TaskEditorSheet: View {
                 .foregroundStyle(theme.secondaryInk)
 
             Picker("Schedule Mode", selection: $scheduleMode) {
-                Text("Rolling Interval").tag(ScheduleMode.rollingFromLastDone)
-                Text("Fixed Weekdays").tag(ScheduleMode.fixedCalendar)
+                Text("After Last Done").tag(ScheduleMode.rollingFromLastDone)
+                Text("Specific Days").tag(ScheduleMode.fixedCalendar)
             }
             .pickerStyle(.segmented)
 
             Text(scheduleMode.subtitle)
                 .font(.caption)
                 .foregroundStyle(theme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
 
             if scheduleMode == .rollingFromLastDone {
                 HStack(spacing: 10) {
@@ -166,24 +157,20 @@ struct TaskEditorSheet: View {
                     .pickerStyle(.menu)
                 }
 
-                // 1-Tap Quick Cadence Presets
-                HStack(spacing: 6) {
-                    ForEach([(1, "Daily"), (3, "3d"), (7, "Weekly"), (14, "2w"), (30, "Monthly")], id: \.1) { days, label in
+                FlowChipLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+                    ForEach([(1, "Daily"), (2, "Every 2d"), (3, "Every 3d"), (7, "Weekly"), (14, "Every 2w"), (30, "Monthly")], id: \.1) { days, label in
+                        let selected = intervalUnit == .days && intervalCount == days
                         Button(label) {
                             intervalUnit = .days
                             intervalCount = days
                         }
-                        .font(.caption2.weight(.heavy))
+                        .font(.caption.weight(.bold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
-                            Capsule().fill(
-                                (intervalUnit == .days && intervalCount == days)
-                                    ? theme.accentPrimary
-                                    : theme.canvasSecondary
-                            )
+                            Capsule().fill(selected ? theme.accentPrimary : theme.canvasSecondary)
                         )
-                        .foregroundStyle((intervalUnit == .days && intervalCount == days) ? theme.onAccentPrimary : theme.primaryInk)
+                        .foregroundStyle(selected ? theme.onAccentPrimary : theme.primaryInk)
                         .buttonStyle(.plain)
                     }
                 }
@@ -204,7 +191,7 @@ struct TaskEditorSheet: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 9)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 9)
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
                                         .fill(active ? theme.accentPrimary : theme.canvasSecondary)
                                 )
                                 .foregroundStyle(active ? theme.onAccentPrimary : theme.primaryInk)
@@ -218,9 +205,9 @@ struct TaskEditorSheet: View {
         .adhousedCard()
     }
 
-    private var adhdEffortAndTimeCard: some View {
+    private var effortAndTimeCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("SPOONS & TIME ESTIMATE")
+            Text("EFFORT & TIME ESTIMATE")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(theme.secondaryInk)
 
@@ -230,26 +217,28 @@ struct TaskEditorSheet: View {
                     Button {
                         energyLevel = level
                     } label: {
-                        Text(level.label)
+                        Text(level.badgeText)
                             .font(.caption.weight(.bold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 9)
                             .background(
-                                RoundedRectangle(cornerRadius: 10)
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     .fill(active ? theme.accentPrimary : theme.canvasSecondary)
                             )
-                            .foregroundStyle(active ? .white : theme.primaryInk)
+                            .foregroundStyle(active ? theme.onAccentPrimary : theme.primaryInk)
                     }
                     .buttonStyle(.plain)
                 }
             }
 
-            HStack(spacing: 8) {
+            FlowChipLayout(horizontalSpacing: 7, verticalSpacing: 7) {
                 Text("Approx time:")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.secondaryInk)
+                    .padding(.vertical, 5)
+
                 ForEach(minuteOptions, id: \.self) { mins in
-                    Button("\(mins)m") {
+                    Button("\(mins) min") {
                         estimatedMinutes = mins
                     }
                     .font(.caption.weight(.heavy))
@@ -258,7 +247,7 @@ struct TaskEditorSheet: View {
                     .background(
                         Capsule().fill(estimatedMinutes == mins ? theme.warmingColor : theme.canvasSecondary)
                     )
-                    .foregroundStyle(estimatedMinutes == mins ? .black : theme.primaryInk)
+                    .foregroundStyle(estimatedMinutes == mins ? Color(hex: "#121317") : theme.primaryInk)
                     .buttonStyle(.plain)
                 }
             }
@@ -271,37 +260,36 @@ struct TaskEditorSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Toggle(isOn: $remindersEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("PERSISTENT REMINDER LOOP")
+                    Text("REPEATING DUE-DAY REMINDERS")
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(theme.secondaryInk)
-                    Text("Keeps raising due task until marked Done")
+                    Text("Keeps gently reminding you on the due day until marked Done")
                         .font(.caption2)
                         .foregroundStyle(theme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .tint(theme.accentPrimary)
 
             if remindersEnabled {
-                Text("Re-alert frequency on due day:")
+                Text("How often to remind you when due:")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(theme.primaryInk)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 7) {
-                        ForEach(nagOptions, id: \.self) { mins in
-                            let label = mins < 60 ? "Every \(mins)m" : "Every \(mins / 60)h"
-                            Button(label) {
-                                nagIntervalMinutes = mins
-                            }
-                            .font(.caption.weight(.heavy))
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule().fill(nagIntervalMinutes == mins ? theme.dueNowColor : theme.canvasSecondary)
-                            )
-                            .foregroundStyle(nagIntervalMinutes == mins ? .white : theme.primaryInk)
-                            .buttonStyle(.plain)
+                FlowChipLayout(horizontalSpacing: 7, verticalSpacing: 7) {
+                    ForEach(nagOptions, id: \.self) { mins in
+                        let label = ChoreTask.humanIntervalText(forMinutes: mins)
+                        Button(label) {
+                            nagIntervalMinutes = mins
                         }
+                        .font(.caption.weight(.heavy))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(nagIntervalMinutes == mins ? theme.dueNowColor : theme.canvasSecondary)
+                        )
+                        .foregroundStyle(nagIntervalMinutes == mins ? .white : theme.primaryInk)
+                        .buttonStyle(.plain)
                     }
                 }
 
@@ -328,10 +316,12 @@ struct TaskEditorSheet: View {
                                     Text(tier.title)
                                         .font(.subheadline.weight(.bold))
                                         .foregroundStyle(theme.primaryInk)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     Text(tier.explanation)
                                         .font(.caption2)
                                         .foregroundStyle(theme.secondaryInk)
                                         .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                                 Spacer()
                                 Image(systemName: active ? "largecircle.fill.circle" : "circle")
@@ -339,7 +329,7 @@ struct TaskEditorSheet: View {
                             }
                             .padding(11)
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .fill(active ? theme.dueNowColor.opacity(0.12) : theme.canvasSecondary)
                             )
                         }
@@ -348,7 +338,7 @@ struct TaskEditorSheet: View {
                 }
 
                 if intensityTier == .cutoffSystemAlarm {
-                    Stepper("Cutoff System Alarm at **\(alarmCutoffHour):00**", value: $alarmCutoffHour, in: 12...23)
+                    Stepper("Evening Alarm at **\(alarmCutoffHour):00**", value: $alarmCutoffHour, in: 12...23)
                         .font(.caption.weight(.bold))
                 }
             }
@@ -359,7 +349,7 @@ struct TaskEditorSheet: View {
 
     private var householdAssignmentCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("SHARED HOUSEHOLD TURN MODE")
+            Text("WHO DOES THIS CHORE?")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(theme.secondaryInk)
 
@@ -373,9 +363,10 @@ struct TaskEditorSheet: View {
             Text(assignmentMode.subtitle)
                 .font(.caption2)
                 .foregroundStyle(theme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
 
             if assignmentMode == .assigned {
-                HStack(spacing: 8) {
+                FlowChipLayout(horizontalSpacing: 8, verticalSpacing: 8) {
                     ForEach(members) { m in
                         let active = (selectedOwnerID ?? members.first?.id) == m.id
                         Button {
@@ -397,20 +388,40 @@ struct TaskEditorSheet: View {
         .adhousedCard()
     }
 
+    private var saveToCatalogOptionCard: some View {
+        Toggle(isOn: $alsoSaveToCatalog) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Also save to my Chore & Activity Catalog")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(theme.primaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Keeps this custom item in your Catalog for future re-use or sharing")
+                    .font(.caption2)
+                    .foregroundStyle(theme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(theme.accentPrimary)
+        .padding(15)
+        .adhousedCard()
+    }
+
     private var singleChorePauseCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PAUSE THIS CHORE (VACATION / BREAK)")
+            Text("PAUSE THIS CHORE")
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(theme.warmingColor)
 
             Toggle(isOn: $isChorePausedUntilDate) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Pause Chore & Alerts Until Date & Time")
+                    Text("Pause Chore & Reminders Until Date & Time")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(theme.primaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text("Silences notifications for this chore without deleting it")
                         .font(.caption2)
                         .foregroundStyle(theme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .tint(theme.warmingColor)
@@ -432,13 +443,14 @@ struct TaskEditorSheet: View {
     private func archiveDeleteCard(_ task: ChoreTask) -> some View {
         Button(role: .destructive) {
             task.isArchived = true
+            task.updatedAt = .now
             try? modelContext.save()
             TaskActionService.awaitableReconcileAndReloadWidgets(in: modelContext)
             dismiss()
         } label: {
             HStack {
                 Spacer()
-                Label("Archive Chore", systemImage: "archivebox")
+                Label("Remove / Archive Chore", systemImage: "trash")
                     .font(.subheadline.weight(.bold))
                 Spacer()
             }
@@ -450,6 +462,9 @@ struct TaskEditorSheet: View {
     private func populateIfEditing() {
         guard let t = existingTask else {
             selectedOwnerID = members.first?.id
+            if theme.preset.isOmarchyQuattroStyle || ADHOUSEDPreferences.shared.iconStylePreference == .omarchyPixelHUD {
+                iconSymbol = "omarchy:spark"
+            }
             return
         }
         title = t.title
@@ -536,6 +551,25 @@ struct TaskEditorSheet: View {
                 assignedMemberIDs: assignedIDs
             )
             modelContext.insert(newTask)
+
+            if alsoSaveToCatalog {
+                let tpl = StarterChoreTemplate(
+                    title: trimmed,
+                    iconSymbol: iconSymbol,
+                    room: room,
+                    scheduleMode: scheduleMode,
+                    intervalUnit: intervalUnit,
+                    intervalCount: intervalCount,
+                    fixedWeekdays: Array(fixedWeekdays),
+                    energyLevel: energyLevel,
+                    estimatedMinutes: estimatedMinutes,
+                    suggestedNagMinutes: nagIntervalMinutes,
+                    suggestedTier: intensityTier,
+                    recommendedByDefault: false,
+                    isCustom: true
+                )
+                ADHOUSEDPreferences.shared.addOrUpdateCustomCatalogTemplate(tpl)
+            }
         }
 
         try? modelContext.save()

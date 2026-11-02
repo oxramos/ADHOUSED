@@ -21,11 +21,11 @@ public enum RoomCategory: String, Codable, CaseIterable, Identifiable, Sendable 
         case .kitchen: return "Kitchen"
         case .bathroom: return "Bathroom"
         case .bedroom: return "Bedroom"
-        case .living: return "Living Space"
+        case .living: return "Living Room"
         case .laundry: return "Laundry & Linens"
         case .petsAndPlants: return "Pets & Plants"
         case .entryAndTrash: return "Entry & Trash"
-        case .general: return "Whole Home"
+        case .general: return "Home & Life"
         }
     }
 
@@ -36,9 +36,9 @@ public enum RoomCategory: String, Codable, CaseIterable, Identifiable, Sendable 
         case .bedroom: return "Bedroom"
         case .living: return "Living"
         case .laundry: return "Laundry"
-        case .petsAndPlants: return "Pets/Plants"
-        case .entryAndTrash: return "Trash/Entry"
-        case .general: return "Home"
+        case .petsAndPlants: return "Pets & Plants"
+        case .entryAndTrash: return "Trash & Entry"
+        case .general: return "Home & Life"
         }
     }
 
@@ -52,6 +52,19 @@ public enum RoomCategory: String, Codable, CaseIterable, Identifiable, Sendable 
         case .petsAndPlants: return "pawprint.fill"
         case .entryAndTrash: return "trash.fill"
         case .general: return "house.fill"
+        }
+    }
+
+    public var omarchyIconKey: String {
+        switch self {
+        case .kitchen: return "omarchy:dishes"
+        case .bathroom: return "omarchy:droplet"
+        case .bedroom: return "omarchy:bed"
+        case .living: return "omarchy:sofa"
+        case .laundry: return "omarchy:washer"
+        case .petsAndPlants: return "omarchy:plant"
+        case .entryAndTrash: return "omarchy:trash"
+        case .general: return "omarchy:terminal_home"
         }
     }
 
@@ -103,7 +116,7 @@ public enum IntervalUnit: String, Codable, CaseIterable, Identifiable, Sendable 
 }
 
 public enum ScheduleMode: String, Codable, CaseIterable, Identifiable, Sendable {
-    /// Default ADHD-friendly mode: next due date is measured relative to when you actually last completed it.
+    /// Default mode: next due date is measured relative to when you actually last completed it.
     case rollingFromLastDone
     /// Date-locked mode: tied to specific weekdays (1=Sun...7=Sat) or a day of the month (1...28).
     case fixedCalendar
@@ -112,15 +125,15 @@ public enum ScheduleMode: String, Codable, CaseIterable, Identifiable, Sendable 
 
     public var title: String {
         switch self {
-        case .rollingFromLastDone: return "Rolling Since Last Done"
-        case .fixedCalendar: return "Fixed Calendar Days"
+        case .rollingFromLastDone: return "After Last Done"
+        case .fixedCalendar: return "Specific Days"
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .rollingFromLastDone: return "Resets cleanly whenever done — zero overdue pileup"
-        case .fixedCalendar: return "For date-locked chores like Trash Night or Rent"
+        case .rollingFromLastDone: return "Counts forward from whenever you finish it — never piles up"
+        case .fixedCalendar: return "Best for fixed days like Trash Pickup or Rent"
         }
     }
 }
@@ -132,6 +145,7 @@ public enum FixedCalendarRuleKind: String, Codable, CaseIterable, Identifiable, 
     public var id: String { rawValue }
 }
 
+/// Stored raw values preserved for seamless compatibility; all user-facing text uses plain, everyday English.
 public enum EnergyLevel: String, Codable, CaseIterable, Identifiable, Sendable {
     case lowSpoons
     case steady
@@ -141,23 +155,23 @@ public enum EnergyLevel: String, Codable, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
-        case .lowSpoons: return "Low Effort"
-        case .steady: return "Steady"
-        case .deepClean: return "Deep Clean"
+        case .lowSpoons: return "Quick & Easy"
+        case .steady: return "Medium"
+        case .deepClean: return "Big Task"
         }
     }
 
     public var badgeText: String {
         switch self {
-        case .lowSpoons: return "Low Spoons"
+        case .lowSpoons: return "Easy"
         case .steady: return "Medium"
-        case .deepClean: return "High Focus"
+        case .deepClean: return "Big Task"
         }
     }
 
     public var symbolName: String {
         switch self {
-        case .lowSpoons: return "battery.100.bolt"
+        case .lowSpoons: return "leaf.fill"
         case .steady: return "bolt.fill"
         case .deepClean: return "sparkles"
         }
@@ -165,47 +179,47 @@ public enum EnergyLevel: String, Codable, CaseIterable, Identifiable, Sendable {
 }
 
 public enum ReminderIntensityTier: String, Codable, CaseIterable, Identifiable, Sendable {
-    /// Tier 1: Repeating Time-Sensitive notification cascade within Awake Hours.
+    /// Tier 1: Repeating notification cascade within Daytime Hours.
     case gentlePings
-    /// Tier 2: Time-Sensitive cascade + Pinned Lock Screen & Dynamic Island Live Activity.
+    /// Tier 2: Repeating notifications + Pinned Lock Screen & Dynamic Island Live Activity.
     case stickyLiveActivity
-    /// Tier 3: Tier 2 + Native AlarmKit full-screen system alarm at designated cutoff time.
+    /// Tier 3: Tier 2 + Native AlarmKit full-screen system alarm at designated evening cutoff time.
     case cutoffSystemAlarm
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .gentlePings: return "Persistent Pings"
-        case .stickyLiveActivity: return "Sticky Lock Screen"
-        case .cutoffSystemAlarm: return "Un-ignorable Alarm"
+        case .gentlePings: return "Repeating Reminders"
+        case .stickyLiveActivity: return "Pin to Lock Screen + Repeat"
+        case .cutoffSystemAlarm: return "Evening Must-Do Alarm"
         }
     }
 
     public var shortBadge: String {
         switch self {
-        case .gentlePings: return "Nag Loop"
-        case .stickyLiveActivity: return "Lock Pinned"
-        case .cutoffSystemAlarm: return "Cutoff Alarm"
+        case .gentlePings: return "Repeats"
+        case .stickyLiveActivity: return "Pinned"
+        case .cutoffSystemAlarm: return "Evening Alarm"
         }
     }
 
     public var explanation: String {
         switch self {
         case .gentlePings:
-            return "Re-alerts at your chosen interval during awake hours. Swiping one away won't silence the rest."
+            return "Sends a reminder at your chosen interval during daytime hours until marked done."
         case .stickyLiveActivity:
-            return "Repeating Time-Sensitive pings + a persistent Live Activity banner pinned to your Lock Screen."
+            return "Keeps a live banner on your Lock Screen plus repeating notifications until finished."
         case .cutoffSystemAlarm:
-            return "Pins to Lock Screen all day and escalates to a ringing system AlarmKit alert if undone by cutoff time."
+            return "Rings a full-screen alarm at your evening cutoff hour if still unfinished (great for trash night or pets)."
         }
     }
 
     public var symbolName: String {
         switch self {
-        case .gentlePings: return "bell.badge.fill"
+        case .gentlePings: return "bell.fill"
         case .stickyLiveActivity: return "platter.filled.top.iphone"
-        case .cutoffSystemAlarm: return "alarm.waves.left.and.right.fill"
+        case .cutoffSystemAlarm: return "alarm.fill"
         }
     }
 }
@@ -219,25 +233,25 @@ public enum AssignmentMode: String, Codable, CaseIterable, Identifiable, Sendabl
 
     public var title: String {
         switch self {
-        case .anyone: return "Up for Grabs"
-        case .assigned: return "Assigned Owner"
-        case .alternating: return "Alternating Turns"
+        case .anyone: return "Anyone"
+        case .assigned: return "One Person"
+        case .alternating: return "Take Turns"
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .anyone: return "Anyone can grab it; completing stops alerts for everyone"
-        case .assigned: return "Dedicated owner; only reminds that household member"
-        case .alternating: return "Ping-pongs automatically to the next person each time it's done"
+        case .anyone: return "Either partner can do it; checking it off clears it for both"
+        case .assigned: return "Assigned to one specific person's list"
+        case .alternating: return "Automatically switches to the other person next time"
         }
     }
 
     public var symbolName: String {
         switch self {
-        case .anyone: return "hands.sparkles.fill"
+        case .anyone: return "person.2.fill"
         case .assigned: return "person.crop.circle.badge.checkmark"
-        case .alternating: return "arrow.triangle.2.circlepath"
+        case .alternating: return "arrow.left.arrow.right"
         }
     }
 }
@@ -263,10 +277,10 @@ public enum FreshnessStage: String, Codable, CaseIterable, Sendable, Comparable 
 
     public var label: String {
         switch self {
-        case .needsAttentionNow: return "Needs Love"
+        case .needsAttentionNow: return "Overdue"
         case .dueToday: return "Due Today"
         case .warming: return "Due Soon"
-        case .fresh: return "Fresh"
+        case .fresh: return "Done"
         }
     }
 }
@@ -279,38 +293,161 @@ public enum LayoutUsabilityMode: String, Codable, CaseIterable, Identifiable, Se
 
     public var title: String {
         switch self {
-        case .spotlightAndRooms: return "Today Spotlight + Rooms"
-        case .freshnessBatteryStream: return "Freshness Battery Stream"
+        case .spotlightAndRooms: return "Focus List"
+        case .freshnessBatteryStream: return "Battery Bars"
         }
     }
 
     public var shortLabel: String {
         switch self {
-        case .spotlightAndRooms: return "Spotlight"
-        case .freshnessBatteryStream: return "Battery Stream"
+        case .spotlightAndRooms: return "Focus List"
+        case .freshnessBatteryStream: return "Battery View"
         }
     }
 
     public var symbolName: String {
         switch self {
-        case .spotlightAndRooms: return "rectangle.grid.2x2.fill"
+        case .spotlightAndRooms: return "checklist"
         case .freshnessBatteryStream: return "battery.75percent"
         }
     }
 }
 
+// MARK: - Icon Style Packs & Per-Theme Color Customization
+
+public enum IconStylePreference: String, Codable, CaseIterable, Identifiable, Sendable {
+    case autoTheme
+    case omarchyPixelHUD
+    case minimalOutline
+    case softMedallion
+    case boldBadge
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .autoTheme: return "Match Theme"
+        case .omarchyPixelHUD: return "Omarchy Pixel"
+        case .minimalOutline: return "Minimal Line"
+        case .softMedallion: return "Soft Tinted"
+        case .boldBadge: return "Solid Badge"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .autoTheme:
+            return "Automatically uses Omarchy pixel glyphs on Omarchy themes, minimal strokes on Quiet themes, and soft badges elsewhere."
+        case .omarchyPixelHUD:
+            return "Crisp custom pixel-matrix & Waybar bracket glyphs across all chores and rooms."
+        case .minimalOutline:
+            return "Clean, low-noise architectural outlines with subtle borders."
+        case .softMedallion:
+            return "Cozy rounded pastel-tinted medallions."
+        case .boldBadge:
+            return "High-contrast filled color tiles for quick visual scanning."
+        }
+    }
+}
+
+public enum ThemeCornerOverride: String, Codable, CaseIterable, Identifiable, Sendable {
+    case themeDefault
+    case sharpTerminal
+    case crispModern
+    case softRounded
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .themeDefault: return "Default"
+        case .sharpTerminal: return "Sharp (6pt)"
+        case .crispModern: return "Crisp (14pt)"
+        case .softRounded: return "Plush (24pt)"
+        }
+    }
+}
+
+public enum ThemeFontOverride: String, Codable, CaseIterable, Identifiable, Sendable {
+    case themeDefault
+    case cleanSans
+    case softRounded
+    case monospaced
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .themeDefault: return "Default"
+        case .cleanSans: return "Clean Sans"
+        case .softRounded: return "Rounded"
+        case .monospaced: return "Mono"
+        }
+    }
+}
+
+public struct ThemeColorOverrides: Codable, Equatable, Sendable {
+    public var canvasBackgroundHex: String?
+    public var cardSurfaceHex: String?
+    public var primaryInkHex: String?
+    public var accentPrimaryHex: String?
+    public var accentSecondaryHex: String?
+    public var freshColorHex: String?
+    public var dueNowColorHex: String?
+    public var cornerStyle: ThemeCornerOverride
+    public var fontStyle: ThemeFontOverride
+
+    public init(
+        canvasBackgroundHex: String? = nil,
+        cardSurfaceHex: String? = nil,
+        primaryInkHex: String? = nil,
+        accentPrimaryHex: String? = nil,
+        accentSecondaryHex: String? = nil,
+        freshColorHex: String? = nil,
+        dueNowColorHex: String? = nil,
+        cornerStyle: ThemeCornerOverride = .themeDefault,
+        fontStyle: ThemeFontOverride = .themeDefault
+    ) {
+        self.canvasBackgroundHex = canvasBackgroundHex
+        self.cardSurfaceHex = cardSurfaceHex
+        self.primaryInkHex = primaryInkHex
+        self.accentPrimaryHex = accentPrimaryHex
+        self.accentSecondaryHex = accentSecondaryHex
+        self.freshColorHex = freshColorHex
+        self.dueNowColorHex = dueNowColorHex
+        self.cornerStyle = cornerStyle
+        self.fontStyle = fontStyle
+    }
+
+    public var hasAnyCustomization: Bool {
+        canvasBackgroundHex != nil ||
+        cardSurfaceHex != nil ||
+        primaryInkHex != nil ||
+        accentPrimaryHex != nil ||
+        accentSecondaryHex != nil ||
+        freshColorHex != nil ||
+        dueNowColorHex != nil ||
+        cornerStyle != .themeDefault ||
+        fontStyle != .themeDefault
+    }
+}
+
+// MARK: - Expanded Theme Families & Presets
+
 public enum ThemeFamily: String, CaseIterable, Identifiable, Sendable {
-    case adhousedOriginals
-    case omarchyCore
-    case omarchySpectrum
+    case quietAndCalm
+    case modernFocus
+    case omarchyDesktops
+    case omarchyChromatic
 
     public var id: String { rawValue }
 
     public var sectionHeader: String {
         switch self {
-        case .adhousedOriginals: return "ADHOUSED ORIGINALS"
-        case .omarchyCore: return "OMARCHY QUATTRO OS · CORE & CHROMATIC"
-        case .omarchySpectrum: return "OMARCHY QUATTRO OS · MINIMAL & WARM SPECTRUM"
+        case .quietAndCalm: return "QUIET & MINIMAL · LOW STIMULATION"
+        case .modernFocus: return "MODERN ADHD FOCUS · CALM & COZY"
+        case .omarchyDesktops: return "OMARCHY · SIGNATURE HYPRLAND THEMES"
+        case .omarchyChromatic: return "OMARCHY · RETRO, CYBER & TONAL"
         }
     }
 
@@ -320,90 +457,167 @@ public enum ThemeFamily: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum ThemePreset: String, Codable, CaseIterable, Identifiable, Sendable {
+    // 1. Quiet & Minimal (Low-Stimulation Sanctuary)
+    case quietSanctuary
+    case japandiMoss
+    case nordicDaylight
+
+    // 2. Modern ADHD Focus (Biophilic & Cozy Dopamine)
+    case matchaOat
+    case lofiDusk
+    case oceanicFocus
     case warmTactileBento
     case chunkyNeoBrutalistPop
-    case omarchyQuattro
-    case omarchyEverforest
-    case omarchyCyberpunk
-    case quattroMinimal
-    case quattroAsh
-    case omarchyAmber
-    case omarchySolarFlare
+
+    // 3. Omarchy · Signature Hyprland Desktops
+    case omarchyQuattro        // Tokyo Night
+    case omarchyCatppuccin     // Catppuccin Mocha / Latte
+    case omarchyKanagawa       // Kanagawa Wave / Lotus
+    case omarchyRosePine       // Rosé Pine / Dawn
+    case omarchyNord           // Nord Polar Frost
+    case omarchyMatteBlack     // Ghostty Matte Black OLED
+    case omarchyEverforest     // Everforest Woodland
+
+    // 4. Omarchy · Retro, Cyber & Tonal
+    case omarchyGruvbox        // Gruvbox Material
+    case omarchyCyberpunk      // Synthwave Cyber
+    case quattroMinimal        // Monochrome Slate / Mist
+    case quattroAsh            // Mineral Stone / Sand
+    case omarchyAmber          // Amber Wave
+    case omarchySolarFlare     // Solar Tangerine
 
     public var id: String { rawValue }
 
     public var family: ThemeFamily {
         switch self {
-        case .warmTactileBento, .chunkyNeoBrutalistPop:
-            return .adhousedOriginals
-        case .omarchyQuattro, .omarchyEverforest, .omarchyCyberpunk:
-            return .omarchyCore
-        case .quattroMinimal, .quattroAsh, .omarchyAmber, .omarchySolarFlare:
-            return .omarchySpectrum
+        case .quietSanctuary, .japandiMoss, .nordicDaylight:
+            return .quietAndCalm
+        case .matchaOat, .lofiDusk, .oceanicFocus, .warmTactileBento, .chunkyNeoBrutalistPop:
+            return .modernFocus
+        case .omarchyQuattro, .omarchyCatppuccin, .omarchyKanagawa, .omarchyRosePine, .omarchyNord, .omarchyMatteBlack, .omarchyEverforest:
+            return .omarchyDesktops
+        case .omarchyGruvbox, .omarchyCyberpunk, .quattroMinimal, .quattroAsh, .omarchyAmber, .omarchySolarFlare:
+            return .omarchyChromatic
         }
     }
 
     public var title: String {
         switch self {
-        case .warmTactileBento: return "Warm Tactile Bento"
-        case .chunkyNeoBrutalistPop: return "Chunky Neo-Brutalist Pop"
-        case .omarchyQuattro: return "Omarchy Quattro"
+        case .quietSanctuary: return "Quiet Sanctuary"
+        case .japandiMoss: return "Japandi Stone & Moss"
+        case .nordicDaylight: return "Nordic Daylight"
+        case .matchaOat: return "Matcha & Oat"
+        case .lofiDusk: return "Cozy Lo-Fi Dusk"
+        case .oceanicFocus: return "Oceanic Deep Teal"
+        case .warmTactileBento: return "Warm Linen Bento"
+        case .chunkyNeoBrutalistPop: return "Tactile Studio Pop"
+        case .omarchyQuattro: return "Omarchy Tokyo Night"
+        case .omarchyCatppuccin: return "Omarchy Catppuccin"
+        case .omarchyKanagawa: return "Omarchy Kanagawa"
+        case .omarchyRosePine: return "Omarchy Rosé Pine"
+        case .omarchyNord: return "Omarchy Nord Frost"
+        case .omarchyMatteBlack: return "Omarchy Matte Black"
         case .omarchyEverforest: return "Omarchy Everforest"
+        case .omarchyGruvbox: return "Omarchy Gruvbox"
         case .omarchyCyberpunk: return "Omarchy Cyberpunk"
-        case .quattroMinimal: return "Quattro Minimal & Mist"
-        case .quattroAsh: return "Quattro Ash & Desert Sun"
-        case .omarchyAmber: return "Amber Wave & Sunflower"
-        case .omarchySolarFlare: return "Solar Flare"
+        case .quattroMinimal: return "Omarchy Mono Slate"
+        case .quattroAsh: return "Omarchy Mineral Ash"
+        case .omarchyAmber: return "Omarchy Amber Phosphor"
+        case .omarchySolarFlare: return "Omarchy Solar Copper"
         }
     }
 
     public var shortLabel: String {
         switch self {
+        case .quietSanctuary: return "Quiet"
+        case .japandiMoss: return "Japandi"
+        case .nordicDaylight: return "Nordic"
+        case .matchaOat: return "Matcha"
+        case .lofiDusk: return "Lo-Fi Dusk"
+        case .oceanicFocus: return "Oceanic"
         case .warmTactileBento: return "Bento"
         case .chunkyNeoBrutalistPop: return "Pop"
-        case .omarchyQuattro: return "Quattro"
+        case .omarchyQuattro: return "Tokyo Night"
+        case .omarchyCatppuccin: return "Catppuccin"
+        case .omarchyKanagawa: return "Kanagawa"
+        case .omarchyRosePine: return "Rosé Pine"
+        case .omarchyNord: return "Nord"
+        case .omarchyMatteBlack: return "Matte Black"
         case .omarchyEverforest: return "Everforest"
+        case .omarchyGruvbox: return "Gruvbox"
         case .omarchyCyberpunk: return "Cyberpunk"
-        case .quattroMinimal: return "Minimal"
+        case .quattroMinimal: return "Mono Slate"
         case .quattroAsh: return "Ash"
         case .omarchyAmber: return "Amber"
-        case .omarchySolarFlare: return "Solar"
+        case .omarchySolarFlare: return "Copper"
         }
     }
 
     public var subtitle: String {
         switch self {
+        case .quietSanctuary:
+            return "Ultra-calm warm linen & velvet slate with muted contrast and whisper-quiet visual rhythm"
+        case .japandiMoss:
+            return "Architectural limestone, hinoki forest moss & warm walnut tones"
+        case .nordicDaylight:
+            return "Airy Scandinavian paper & calm fjord slate-blue for effortless clarity"
+        case .matchaOat:
+            return "Creamy oat milk, ceremonial matcha green & soft peach accents"
+        case .lofiDusk:
+            return "Soothing twilight plum-indigo, soft lavender & warm apricot — gentle on tired eyes"
+        case .oceanicFocus:
+            return "Biophilic deep sea teal & seafoam — lowers visual overstimulation"
         case .warmTactileBento:
-            return "Calm rounded tactile cards, organic sage-to-coral freshness gradients & soft depth"
+            return "Soft rounded cards with warm sage-to-terracotta progress indicators"
         case .chunkyNeoBrutalistPop:
-            return "High-contrast crisp borders, physical switch shadows & dopamine color blocks"
+            return "Crisp tactile borders and cheerful color blocks for high-energy days"
         case .omarchyQuattro:
-            return "Tokyo-Night #1A1B26 HUD, SF Mono type, 8pt geometry & 45° blue-purple focus rings (Quattro Light in Day)"
+            return "Classic Hyprland Tokyo Night #1A1B26 with periwinkle blue, violet & pixel HUD glyphs"
+        case .omarchyCatppuccin:
+            return "Beloved Catppuccin Mocha velvet (#1E1E2E) with lavender, peach & mint (Latte in Light)"
+        case .omarchyKanagawa:
+            return "Hokusai sumi-ink #1F1F28 with wave blue, sakura pink & carp gold"
+        case .omarchyRosePine:
+            return "Soho pine #191724 with iris, seafoam & muted rose (Rosé Pine Dawn in Light)"
+        case .omarchyNord:
+            return "Arctic polar night #2E3440 with frost cyan, glacier blue & aurora sage"
+        case .omarchyMatteBlack:
+            return "Pure OLED #0E0E10 Ghostty terminal black with crisp emerald phosphor & zero glare"
         case .omarchyEverforest:
-            return "Woodland moss & calming botanical sage mist with monospaced HUD framing"
+            return "Deep woodland moss & calming botanical sage with crisp monospaced HUD framing"
+        case .omarchyGruvbox:
+            return "Warm retro Gruvbox Material charcoal, parchment cream, olive & ochre"
         case .omarchyCyberpunk:
-            return "Synthwave #13141C cyber-void with electric cyan & neon magenta 45° focus borders"
+            return "Night-city synthwave void with electric cyan & neon magenta focus rings"
         case .quattroMinimal:
-            return "Zero-saturation Slate monochrome & pale Mist with high-contrast text & solid focus rings"
+            return "Zero-saturation monochrome slate & mist for distraction-free terminal focus"
         case .quattroAsh:
-            return "Low-saturation warm mineral stone in Dark & sunlit Desert Sun sand in Light"
+            return "Low-saturation mineral stone in Dark & warm sandstone in Light"
         case .omarchyAmber:
-            return "Burnished Amber Wave gold on #13141C obsidian & Sunflower yellow tonal focus borders"
+            return "Retro CRT burnished amber phosphor on obsidian"
         case .omarchySolarFlare:
-            return "Radiant tangerine & burnt-umber Solar Flare spectrum for high-energy activation"
+            return "Warm copper & sunlit terracotta terminal palette"
         }
     }
 
     public var isOmarchyQuattroStyle: Bool {
-        family != .adhousedOriginals
+        family == .omarchyDesktops || family == .omarchyChromatic
     }
 
-    /// Signature showcase appearance from the reference style sheets (`nil` = follows system Light/Dark).
+    public var isQuietMinimalFamily: Bool {
+        family == .quietAndCalm
+    }
+
+    /// Signature showcase appearance (`nil` = follows system Light/Dark).
     public var signatureIsDark: Bool? {
         switch self {
-        case .warmTactileBento, .chunkyNeoBrutalistPop:
-            return nil
-        case .omarchyQuattro, .omarchyEverforest, .omarchyCyberpunk, .quattroMinimal, .quattroAsh, .omarchyAmber:
+        case .quietSanctuary, .japandiMoss, .nordicDaylight, .matchaOat, .warmTactileBento, .chunkyNeoBrutalistPop:
+            return false
+        case .lofiDusk, .oceanicFocus:
+            return true
+        case .omarchyQuattro, .omarchyCatppuccin, .omarchyKanagawa, .omarchyRosePine, .omarchyNord,
+             .omarchyMatteBlack, .omarchyEverforest, .omarchyGruvbox, .omarchyCyberpunk,
+             .quattroMinimal, .quattroAsh, .omarchyAmber:
             return true
         case .omarchySolarFlare:
             return false
@@ -421,8 +635,8 @@ public enum ColorSchemePreference: String, Codable, CaseIterable, Identifiable, 
 
     public var title: String {
         switch self {
-        case .signature: return "Signature"
-        case .system: return "Auto"
+        case .signature: return "Theme Default"
+        case .system: return "System"
         case .light: return "Light"
         case .dark: return "Dark"
         }
@@ -439,10 +653,10 @@ public enum InitialFreshnessSeed: String, Codable, CaseIterable, Identifiable, S
 
     public var label: String {
         switch self {
-        case .autoStagger: return "Auto-Stagger"
-        case .fresh: return "Fresh"
-        case .dueSoon: return "Soon"
-        case .dueNow: return "Due Now"
+        case .autoStagger: return "Spread Out"
+        case .fresh: return "Just Done"
+        case .dueSoon: return "Due Soon"
+        case .dueNow: return "Due Today"
         }
     }
 }
@@ -558,7 +772,7 @@ public final class ChoreTask {
     public var deferralCount: Int
     public var totalCompletionsCount: Int
 
-    // ADHD Scaffolds
+    // Effort & Time Scaffolds
     public var energyLevelRaw: String
     public var estimatedMinutes: Int
     public var sprintDurationMinutes: Int
@@ -704,6 +918,32 @@ public final class ChoreTask {
         }
         set {
             assignedMemberIDsCSV = newValue.map(\.uuidString).joined(separator: ",")
+        }
+    }
+
+    /// Plain-English description of how often reminders repeat on a due day (replaces cryptic `"q60m"`).
+    public var reminderIntervalSummary: String {
+        if isTaskPaused() {
+            return "Alerts paused"
+        }
+        return Self.humanIntervalText(forMinutes: nagIntervalMinutes, prefix: "Reminds every ")
+    }
+
+    public var reminderBadgeIcon: String {
+        intensityTier == .cutoffSystemAlarm ? "alarm.fill" : "bell.fill"
+    }
+
+    public static func humanIntervalText(forMinutes mins: Int, prefix: String = "Every ") -> String {
+        if mins == 60 {
+            return "\(prefix)1 hr"
+        } else if mins > 60 && mins % 60 == 0 {
+            return "\(prefix)\(mins / 60) hrs"
+        } else if mins > 60 {
+            let hrs = mins / 60
+            let rem = mins % 60
+            return "\(prefix)\(hrs)h \(rem)m"
+        } else {
+            return "\(prefix)\(mins) min"
         }
     }
 
@@ -922,7 +1162,6 @@ public enum VacationBreakPreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Computes a smart `(startDate, endDate)` range for the preset relative to `now`.
     public func suggestedRange(
         from now: Date = .now,
         awakeStartMinutes: Int = 8 * 60 + 30,
@@ -931,22 +1170,18 @@ public enum VacationBreakPreset: String, CaseIterable, Identifiable, Sendable {
         let startOfToday = calendar.startOfDay(for: now)
         switch self {
         case .countrysideWeekend:
-            // Weekday: 1 = Sun, 2 = Mon, ..., 6 = Fri, 7 = Sat
             let weekday = calendar.component(.weekday, from: now)
             if weekday == 6 {
-                // Friday: start at 5:00 PM today (or now if already past 5 PM), end Sunday 8:00 PM
                 let fri5PM = startOfToday.addingTimeInterval(17 * 3600)
                 let start = now >= fri5PM ? now : fri5PM
                 let sunStart = calendar.date(byAdding: .day, value: 2, to: startOfToday) ?? startOfToday.addingTimeInterval(2 * 86_400)
                 let end = sunStart.addingTimeInterval(20 * 3600)
                 return (start, end)
             } else if weekday == 7 {
-                // Saturday: start now, end Sunday 8:00 PM
                 let sunStart = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday.addingTimeInterval(86_400)
                 let end = sunStart.addingTimeInterval(20 * 3600)
                 return (now, end)
             } else if weekday == 1 {
-                // Sunday: start now, end Monday 9:00 AM (or tonight 8:00 PM if still before 6 PM)
                 let sun8PM = startOfToday.addingTimeInterval(20 * 3600)
                 if now < startOfToday.addingTimeInterval(18 * 3600) {
                     return (now, sun8PM)
@@ -955,7 +1190,6 @@ public enum VacationBreakPreset: String, CaseIterable, Identifiable, Sendable {
                     return (now, monStart.addingTimeInterval(9 * 3600))
                 }
             } else {
-                // Mon–Thu: default to upcoming Friday 5:00 PM -> Sunday 8:00 PM
                 let daysUntilFri = (6 - weekday + 7) % 7
                 let friStart = calendar.date(byAdding: .day, value: daysUntilFri, to: startOfToday) ?? startOfToday
                 let start = friStart.addingTimeInterval(17 * 3600)
@@ -992,9 +1226,7 @@ public struct VacationBreakWindow: Codable, Equatable, Identifiable, Sendable {
     public var iconSymbol: String
     public var startDate: Date
     public var endDate: Date
-    /// When true, chore freshness decay is frozen during `[startDate, endDate]` and rolling intervals shift forward so tasks don't pile up while away.
     public var freezeChoreDecay: Bool
-    /// Tracks how many seconds of rolling interval grace shift have already been applied to tasks for this break window.
     public var appliedDecayShiftSeconds: Double
     public var createdAt: Date
 
@@ -1055,11 +1287,18 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         static let themePreset = "adhoused.themePreset"
         static let colorScheme = "adhoused.colorScheme"
         static let layoutMode = "adhoused.layoutMode"
+        static let quietModeEnabled = "adhoused.quietModeEnabled"
+        static let iconStylePreference = "adhoused.iconStylePreference"
         static let bionicReading = "adhoused.bionicReading"
         static let hapticsEnabled = "adhoused.hapticsEnabled"
         static let activeMemberID = "adhoused.activeMemberID"
         static let hasCompletedOnboarding = "adhoused.hasCompletedOnboarding"
         static let vacationBreaksJSON = "adhoused.vacationBreaksJSON"
+        static let themeColorOverridesJSON = "adhoused.themeColorOverridesJSON"
+        static let customCatalogTemplatesJSON = "adhoused.customCatalogTemplatesJSON"
+        static let cloudShareZoneOwnerName = "adhoused.cloudShareZoneOwnerName"
+        static let isAcceptedCloudShareParticipant = "adhoused.isAcceptedCloudShareParticipant"
+        static let cloudShareURLString = "adhoused.cloudShareURLString"
     }
 
     public var themePreset: ThemePreset {
@@ -1072,6 +1311,14 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
 
     public var layoutMode: LayoutUsabilityMode {
         didSet { defaults.set(layoutMode.rawValue, forKey: Keys.layoutMode) }
+    }
+
+    public var quietModeEnabled: Bool {
+        didSet { defaults.set(quietModeEnabled, forKey: Keys.quietModeEnabled) }
+    }
+
+    public var iconStylePreference: IconStylePreference {
+        didSet { defaults.set(iconStylePreference.rawValue, forKey: Keys.iconStylePreference) }
     }
 
     public var bionicReadingEnabled: Bool {
@@ -1098,11 +1345,41 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         }
     }
 
+    public var themeColorOverrides: [String: ThemeColorOverrides] {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(themeColorOverrides) {
+                defaults.set(encoded, forKey: Keys.themeColorOverridesJSON)
+            }
+        }
+    }
+
+    public var customCatalogTemplates: [StarterChoreTemplate] {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(customCatalogTemplates) {
+                defaults.set(encoded, forKey: Keys.customCatalogTemplatesJSON)
+            }
+        }
+    }
+
+    public var cloudShareZoneOwnerName: String? {
+        didSet { defaults.set(cloudShareZoneOwnerName, forKey: Keys.cloudShareZoneOwnerName) }
+    }
+
+    public var isAcceptedCloudShareParticipant: Bool {
+        didSet { defaults.set(isAcceptedCloudShareParticipant, forKey: Keys.isAcceptedCloudShareParticipant) }
+    }
+
+    public var cloudShareURLString: String? {
+        didSet { defaults.set(cloudShareURLString, forKey: Keys.cloudShareURLString) }
+    }
+
     public init(defaults: UserDefaults = SharedAppGroup.sharedUserDefaults) {
         self.defaults = defaults
-        self.themePreset = ThemePreset(rawValue: defaults.string(forKey: Keys.themePreset) ?? "") ?? .warmTactileBento
+        self.themePreset = ThemePreset(rawValue: defaults.string(forKey: Keys.themePreset) ?? "") ?? .quietSanctuary
         self.colorSchemePreference = ColorSchemePreference(rawValue: defaults.string(forKey: Keys.colorScheme) ?? "") ?? .signature
         self.layoutMode = LayoutUsabilityMode(rawValue: defaults.string(forKey: Keys.layoutMode) ?? "") ?? .spotlightAndRooms
+        self.quietModeEnabled = defaults.object(forKey: Keys.quietModeEnabled) as? Bool ?? false
+        self.iconStylePreference = IconStylePreference(rawValue: defaults.string(forKey: Keys.iconStylePreference) ?? "") ?? .autoTheme
         self.bionicReadingEnabled = defaults.object(forKey: Keys.bionicReading) as? Bool ?? false
         self.hapticsEnabled = defaults.object(forKey: Keys.hapticsEnabled) as? Bool ?? true
         if let str = defaults.string(forKey: Keys.activeMemberID) {
@@ -1111,13 +1388,74 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
             self.activeMemberID = nil
         }
         self.hasCompletedOnboarding = defaults.bool(forKey: Keys.hasCompletedOnboarding)
+
         if let data = defaults.data(forKey: Keys.vacationBreaksJSON),
            let decoded = try? JSONDecoder().decode([VacationBreakWindow].self, from: data) {
             self.vacationBreaks = decoded
         } else {
             self.vacationBreaks = []
         }
+
+        if let data = defaults.data(forKey: Keys.themeColorOverridesJSON),
+           let decoded = try? JSONDecoder().decode([String: ThemeColorOverrides].self, from: data) {
+            self.themeColorOverrides = decoded
+        } else {
+            self.themeColorOverrides = [:]
+        }
+
+        if let data = defaults.data(forKey: Keys.customCatalogTemplatesJSON),
+           let decoded = try? JSONDecoder().decode([StarterChoreTemplate].self, from: data) {
+            self.customCatalogTemplates = decoded
+        } else {
+            self.customCatalogTemplates = []
+        }
+
+        self.cloudShareZoneOwnerName = defaults.string(forKey: Keys.cloudShareZoneOwnerName)
+        self.isAcceptedCloudShareParticipant = defaults.bool(forKey: Keys.isAcceptedCloudShareParticipant)
+        self.cloudShareURLString = defaults.string(forKey: Keys.cloudShareURLString)
     }
+
+    // MARK: - Theme Overrides Helpers
+
+    public func colorOverrides(for preset: ThemePreset) -> ThemeColorOverrides {
+        themeColorOverrides[preset.rawValue] ?? ThemeColorOverrides()
+    }
+
+    public func setColorOverrides(_ overrides: ThemeColorOverrides, for preset: ThemePreset) {
+        var copy = themeColorOverrides
+        if overrides.hasAnyCustomization {
+            copy[preset.rawValue] = overrides
+        } else {
+            copy.removeValue(forKey: preset.rawValue)
+        }
+        themeColorOverrides = copy
+    }
+
+    public func resetColorOverrides(for preset: ThemePreset) {
+        var copy = themeColorOverrides
+        copy.removeValue(forKey: preset.rawValue)
+        themeColorOverrides = copy
+    }
+
+    // MARK: - Custom Catalog Helpers
+
+    public func addOrUpdateCustomCatalogTemplate(_ template: StarterChoreTemplate) {
+        var copy = customCatalogTemplates
+        var mutable = template
+        mutable.isCustom = true
+        if let existingIdx = copy.firstIndex(where: { $0.id == mutable.id }) {
+            copy[existingIdx] = mutable
+        } else {
+            copy.insert(mutable, at: 0)
+        }
+        customCatalogTemplates = copy
+    }
+
+    public func removeCustomCatalogTemplate(id: String) {
+        customCatalogTemplates.removeAll { $0.id == id }
+    }
+
+    // MARK: - Vacation Break Helpers
 
     public func activeVacationBreak(at date: Date = .now) -> VacationBreakWindow? {
         vacationBreaks
@@ -1156,6 +1494,10 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         if let mode = LayoutUsabilityMode(rawValue: defaults.string(forKey: Keys.layoutMode) ?? "") {
             layoutMode = mode
         }
+        quietModeEnabled = defaults.object(forKey: Keys.quietModeEnabled) as? Bool ?? false
+        if let iconPref = IconStylePreference(rawValue: defaults.string(forKey: Keys.iconStylePreference) ?? "") {
+            iconStylePreference = iconPref
+        }
         bionicReadingEnabled = defaults.object(forKey: Keys.bionicReading) as? Bool ?? false
         hapticsEnabled = defaults.object(forKey: Keys.hapticsEnabled) as? Bool ?? true
         if let str = defaults.string(forKey: Keys.activeMemberID) {
@@ -1166,5 +1508,16 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
            let decoded = try? JSONDecoder().decode([VacationBreakWindow].self, from: data) {
             vacationBreaks = decoded
         }
+        if let data = defaults.data(forKey: Keys.themeColorOverridesJSON),
+           let decoded = try? JSONDecoder().decode([String: ThemeColorOverrides].self, from: data) {
+            themeColorOverrides = decoded
+        }
+        if let data = defaults.data(forKey: Keys.customCatalogTemplatesJSON),
+           let decoded = try? JSONDecoder().decode([StarterChoreTemplate].self, from: data) {
+            customCatalogTemplates = decoded
+        }
+        cloudShareZoneOwnerName = defaults.string(forKey: Keys.cloudShareZoneOwnerName)
+        isAcceptedCloudShareParticipant = defaults.bool(forKey: Keys.isAcceptedCloudShareParticipant)
+        cloudShareURLString = defaults.string(forKey: Keys.cloudShareURLString)
     }
 }

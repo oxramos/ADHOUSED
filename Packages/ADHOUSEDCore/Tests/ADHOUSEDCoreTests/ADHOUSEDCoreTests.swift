@@ -12,7 +12,6 @@ struct ADHOUSEDCoreTests {
         let now = Date(timeIntervalSince1970: 1_760_000_000)
         let householdID = UUID()
 
-        // Task due every 7 days, last done 10 days ago -> overdue, single actionable item
         let tenDaysAgo = now.addingTimeInterval(-10 * 86_400)
         let task = ChoreTask(
             householdID: householdID,
@@ -31,7 +30,6 @@ struct ADHOUSEDCoreTests {
         #expect(overdueSnap.batteryFill == 0.0)
         #expect(overdueSnap.cadenceSummary.contains("10d ago"))
 
-        // Complete right now -> immediately resets to 100% fresh, due 7 days from today!
         task.lastCompletedAt = now
         let freshSnap = FreshnessCalculator.snapshot(for: task, now: now)
         #expect(freshSnap.isActionableToday == false)
@@ -44,11 +42,9 @@ struct ADHOUSEDCoreTests {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
 
-        // Pick a Wednesday (2026-10-21T12:00:00Z is Wednesday, weekday = 4)
         let wednesday = ISO8601DateFormatter().date(from: "2026-10-21T12:00:00Z")!
         let tenDaysPrior = wednesday.addingTimeInterval(-10 * 86_400)
 
-        // Trash day set to Tuesday (weekday = 3)
         let trashTask = ChoreTask(
             householdID: UUID(),
             title: "Roll bins to curb",
@@ -64,15 +60,14 @@ struct ADHOUSEDCoreTests {
         #expect(missedSnap.isActionableToday == true)
         #expect(missedSnap.stage == .needsAttentionNow)
 
-        // Once completed on Wednesday, stays fresh until next Tuesday
         trashTask.lastCompletedAt = wednesday
         let doneSnap = FreshnessCalculator.snapshot(for: trashTask, now: wednesday, calendar: calendar)
         #expect(doneSnap.isActionableToday == false)
         #expect(doneSnap.batteryFill == 1.0)
     }
 
-    @Test("Anti-Avalanche Starter Seeder caps Day-1 due tasks when adopting large catalog")
-    func antiAvalancheStaggering() throws {
+    @Test("Starter Seeder caps Day-1 due tasks when adopting large catalog")
+    func starterStaggering() throws {
         let now = Date(timeIntervalSince1970: 1_760_000_000)
         let chosen = Array(StarterCatalog.allTemplates.prefix(14))
         let hid = UUID()
@@ -137,7 +132,6 @@ struct ADHOUSEDCoreTests {
         #expect(task.isActionable(forMemberID: alex.id) == true)
         #expect(task.isActionable(forMemberID: sam.id) == false)
 
-        // Alex taps 1-tap Complete on Home Screen Widget
         let record = try TaskActionService.completeTask(
             taskID: task.id,
             byMemberID: alex.id,
@@ -150,7 +144,6 @@ struct ADHOUSEDCoreTests {
         #expect(task.hasActiveUndoGraceWindow(at: now.addingTimeInterval(4)) == true)
         #expect(task.hasActiveUndoGraceWindow(at: now.addingTimeInterval(10)) == false)
 
-        // Accidental tap! Undo within grace window -> restores Alex's turn & prior completion timestamp
         let undone = try TaskActionService.undoLastCompletion(taskID: task.id, in: context, now: now.addingTimeInterval(3))
         #expect(undone == true)
         #expect(task.responsibleMemberID == alex.id)
@@ -166,8 +159,8 @@ struct ADHOUSEDCoreTests {
 
         let household = Household(
             name: "Home",
-            awakeStartMinutes: 8 * 60 + 30, // 08:30
-            awakeEndMinutes: 21 * 60        // 21:00
+            awakeStartMinutes: 8 * 60 + 30,
+            awakeEndMinutes: 21 * 60
         )
 
         let task = ChoreTask(
@@ -193,7 +186,6 @@ struct ADHOUSEDCoreTests {
         #expect(!slots.isEmpty)
         #expect(slots.count <= NagNotificationConstants.maxBudgetSlots)
 
-        // Every scheduled slot must fall strictly inside [08:30, 21:00]
         for slot in slots {
             let dayStart = calendar.startOfDay(for: slot.fireDate)
             let mins = Int(slot.fireDate.timeIntervalSince(dayStart) / 60.0)
@@ -201,7 +193,6 @@ struct ADHOUSEDCoreTests {
             #expect(mins <= household.awakeEndMinutes)
         }
 
-        // Activate 3-hour "Away from Home" pause -> no slot may fire before 12:00!
         let threeHoursLater = baseMorning.addingTimeInterval(3 * 3600)
         household.awayPauseUntil = threeHoursLater
         let pausedSlots = NagSlotPlanner.computeSlots(
@@ -225,13 +216,21 @@ struct ADHOUSEDCoreTests {
         #expect(String(disabled.characters) == "Wash bedsheets")
     }
 
-    @Test("All 9 ThemePresets resolve Light, Dark, and Signature Omarchy Quattro HUD tokens")
-    func multiThemeEngineResolution() {
-        #expect(ThemePreset.allCases.count == 9)
+    @Test("All 21 ThemePresets resolve Light, Dark, Omarchy HUD, Quiet Minimal, and Per-Theme Color Overrides")
+    func multiThemeEngineAndColorCustomization() {
+        #expect(ThemePreset.allCases.count == 21)
 
         for preset in ThemePreset.allCases {
-            let lightTokens = ADHOUSEDThemeTokens.resolve(preset: preset, colorScheme: .light)
-            let darkTokens = ADHOUSEDThemeTokens.resolve(preset: preset, colorScheme: .dark)
+            let lightTokens = ADHOUSEDThemeTokens.resolve(
+                preset: preset,
+                colorScheme: .light,
+                overrides: ThemeColorOverrides()
+            )
+            let darkTokens = ADHOUSEDThemeTokens.resolve(
+                preset: preset,
+                colorScheme: .dark,
+                overrides: ThemeColorOverrides()
+            )
 
             #expect(lightTokens.isDark == false)
             #expect(darkTokens.isDark == true)
@@ -242,11 +241,9 @@ struct ADHOUSEDCoreTests {
                 #expect(lightTokens.isTerminalHUD == true)
                 #expect(darkTokens.isTerminalHUD == true)
                 #expect(lightTokens.fontDesign == .monospaced)
-                #expect(darkTokens.hudTag("Today Spotlight") == "[Today Spotlight]")
-                #expect(darkTokens.cardCornerRadius == 10)
+                #expect(darkTokens.cardCornerRadius >= 8 && darkTokens.cardCornerRadius <= 10)
             } else {
                 #expect(lightTokens.isTerminalHUD == false)
-                #expect(lightTokens.hudTag("Today Spotlight") == "Today Spotlight")
             }
 
             for room in RoomCategory.allCases {
@@ -255,21 +252,104 @@ struct ADHOUSEDCoreTests {
             }
         }
 
-        // Signature mode maps Omarchy dark-showcase themes to .dark even when system is .light, and Solar Flare to .light
+        // Verify per-theme Color & Geometry Overrides
+        let customOverrides = ThemeColorOverrides(
+            canvasBackgroundHex: "#101820",
+            accentPrimaryHex: "#FFAA33",
+            cornerStyle: .softRounded,
+            fontStyle: .softRounded
+        )
+        #expect(customOverrides.hasAnyCustomization == true)
+
+        let customizedTokyo = ADHOUSEDThemeTokens.resolve(
+            preset: .omarchyQuattro,
+            colorScheme: .dark,
+            overrides: customOverrides
+        )
+        #expect(customizedTokyo.cardCornerRadius == 24)
+        #expect(customizedTokyo.fontDesign == .rounded)
+
+        // Signature mode maps Omarchy dark-showcase themes to .dark and Quiet Sanctuary to .light
         #expect(
             ADHOUSEDThemeTokens.effectiveColorScheme(
-                preset: .omarchyQuattro,
+                preset: .omarchyCatppuccin,
                 preference: .signature,
                 systemColorScheme: .light
             ) == .dark
         )
         #expect(
             ADHOUSEDThemeTokens.effectiveColorScheme(
-                preset: .omarchySolarFlare,
+                preset: .quietSanctuary,
                 preference: .signature,
                 systemColorScheme: .dark
             ) == .light
         )
+    }
+
+    @Test("Plain-English labels replace jargon and Omarchy pixel glyphs map cleanly")
+    func plainEnglishLabelsAndOmarchyIcons() {
+        let task60 = ChoreTask(householdID: UUID(), title: "Wipe counters", nagIntervalMinutes: 60, intensityTier: .gentlePings)
+        #expect(task60.reminderIntervalSummary == "Reminds every 1 hr")
+        #expect(task60.reminderBadgeIcon == "bell.fill")
+
+        let task45Alarm = ChoreTask(householdID: UUID(), title: "Roll bins out", nagIntervalMinutes: 45, intensityTier: .cutoffSystemAlarm)
+        #expect(task45Alarm.reminderIntervalSummary == "Reminds every 45 min")
+        #expect(task45Alarm.reminderBadgeIcon == "alarm.fill")
+
+        #expect(EnergyLevel.lowSpoons.label == "Quick & Easy")
+        #expect(EnergyLevel.lowSpoons.badgeText == "Easy")
+
+        #expect(ChoreIconCatalog.mappedOmarchyGlyphKey(for: "dishwasher.fill") == "dishes")
+        #expect(ChoreIconCatalog.mappedOmarchyGlyphKey(for: "omarchy:ghost") == "ghost")
+        #expect(ChoreIconCatalog.fallbackSystemSymbol(for: "omarchy:cat") == "cat.fill")
+        #expect(ChoreIconCatalog.fallbackSystemSymbol(for: "emoji:🪴") == "sparkles")
+    }
+
+    @Test("Custom Catalog items persist, adopt without overwriting household name, and round-trip in JSON backup")
+    @MainActor
+    func customCatalogAndPortableSyncRoundTrip() throws {
+        let suiteName = "adhoused.test.\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = ADHOUSEDPreferences(defaults: isolatedDefaults)
+        let customItem = StarterChoreTemplate(
+            title: "Water balcony herbs",
+            iconSymbol: "omarchy:plant",
+            room: .petsAndPlants,
+            intervalUnit: .days,
+            intervalCount: 3,
+            estimatedMinutes: 4,
+            isCustom: true
+        )
+        prefs.addOrUpdateCustomCatalogTemplate(customItem)
+        #expect(prefs.customCatalogTemplates.count == 1)
+        #expect(prefs.customCatalogTemplates.first?.title == "Water balcony herbs")
+
+        let container = try SharedAppGroup.makeModelContainer(inMemory: true)
+        let context = container.mainContext
+        let household = Household(name: "Big Boss's Fortress")
+        context.insert(household)
+        let member = HouseholdMember(householdID: household.id, displayName: "Big Boss", emoji: "🦊")
+        context.insert(member)
+        try context.save()
+
+        let adopted = try TaskActionService.adoptCatalogTemplates(
+            [(customItem, .dueNow, .anyone)],
+            in: context
+        )
+        #expect(adopted.count == 1)
+        #expect(household.name == "Big Boss's Fortress") // Never overwritten to "Our Home"!
+
+        // Round-trip portable JSON export -> import into second container
+        let backupData = try HouseholdCloudSyncService.shared.exportHouseholdJSON(in: context)
+        let partnerContainer = try SharedAppGroup.makeModelContainer(inMemory: true)
+        try HouseholdCloudSyncService.shared.importHouseholdJSON(backupData, in: partnerContainer.mainContext)
+
+        let importedHouseholds = try partnerContainer.mainContext.fetch(FetchDescriptor<Household>())
+        let importedTasks = try partnerContainer.mainContext.fetch(FetchDescriptor<ChoreTask>())
+        #expect(importedHouseholds.first?.name == "Big Boss's Fortress")
+        #expect(importedTasks.contains(where: { $0.title == "Water balcony herbs" }))
     }
 
     @Test("Vacation & Break Date-Time window pauses chores, silences notifications during range, and shifts rolling decay")
@@ -310,7 +390,6 @@ struct ADHOUSEDCoreTests {
             freezeChoreDecay: true
         )
 
-        // 1. Before break starts (Friday 12:00 PM): notifications fire between 12:00 PM and 5:00 PM, then skip [Fri 5 PM, Sun 8 PM]!
         let preBreakSlots = NagSlotPlanner.computeSlots(
             tasks: [task],
             household: household,
@@ -326,7 +405,6 @@ struct ADHOUSEDCoreTests {
             #expect(insideBreak == false)
         }
 
-        // 2. During break (Saturday 12:00 PM): chore is paused (not actionable today) and 0 notifications fire inside the 24h horizon
         let midBreakSnap = FreshnessCalculator.snapshot(
             for: task,
             now: saturdayNoon,

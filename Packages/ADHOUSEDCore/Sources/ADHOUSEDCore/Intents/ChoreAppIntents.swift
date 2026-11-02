@@ -171,7 +171,7 @@ public struct ChoreEntityQuery: EntityQuery {
         let idSet = Set(identifiers)
         return tasks
             .filter { idSet.contains($0.id.uuidString) && !$0.isArchived }
-            .map { ChoreEntity(id: $0.id.uuidString, title: $0.title, roomTitle: $0.room.title, symbolName: $0.iconSymbol) }
+            .map { ChoreEntity(id: $0.id.uuidString, title: $0.title, roomTitle: $0.room.title, symbolName: ChoreIconCatalog.fallbackSystemSymbol(for: $0.iconSymbol)) }
     }
 
     @MainActor
@@ -181,7 +181,7 @@ public struct ChoreEntityQuery: EntityQuery {
         return tasks
             .filter { !$0.isArchived }
             .sorted { $0.title < $1.title }
-            .map { ChoreEntity(id: $0.id.uuidString, title: $0.title, roomTitle: $0.room.title, symbolName: $0.iconSymbol) }
+            .map { ChoreEntity(id: $0.id.uuidString, title: $0.title, roomTitle: $0.room.title, symbolName: ChoreIconCatalog.fallbackSystemSymbol(for: $0.iconSymbol)) }
     }
 }
 
@@ -193,9 +193,9 @@ public enum WidgetDisplayModeOption: String, AppEnum, Sendable {
 
     public static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Widget Mode")
     public static let caseDisplayRepresentations: [WidgetDisplayModeOption: DisplayRepresentation] = [
-        .topDueQueue: "Top Due Queue",
-        .lowSpoonsQuickWins: "Low-Energy Quick Wins (≤5m)",
-        .pinnedChore: "Pinned Single Chore",
+        .topDueQueue: "Due Today Queue",
+        .lowSpoonsQuickWins: "Quick & Easy (≤5 min)",
+        .pinnedChore: "Single Pinned Chore",
         .roomFilter: "Filter by Room"
     ]
 }

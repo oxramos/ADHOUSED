@@ -134,7 +134,7 @@ public final class ReminderCoordinator {
                 let attrs = ChoreNagActivityAttributes(
                     taskIDString: taskIDStr,
                     taskTitle: task.title,
-                    iconSymbol: task.iconSymbol,
+                    iconSymbol: ChoreIconCatalog.fallbackSystemSymbol(for: task.iconSymbol),
                     roomTitle: task.room.title,
                     estimatedMinutes: task.estimatedMinutes
                 )
@@ -159,7 +159,7 @@ public final class ReminderCoordinator {
         let attrs = SprintTimerActivityAttributes(
             taskIDString: task.id.uuidString,
             taskTitle: task.title,
-            iconSymbol: task.iconSymbol,
+            iconSymbol: ChoreIconCatalog.fallbackSystemSymbol(for: task.iconSymbol),
             roomTitle: task.room.title
         )
         let state = SprintTimerActivityAttributes.ContentState(

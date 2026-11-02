@@ -27,36 +27,56 @@ struct RootDashboardView: View {
         return members.first
     }
 
+    private var activeUnarchivedTasks: [ChoreTask] {
+        tasks.filter { !$0.isArchived }
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             theme.canvasBackground
                 .ignoresSafeArea()
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: prefs.quietModeEnabled ? 16 : 18) {
                     topHeaderBar
                     awayPauseStatusBanner
-                    usabilityAndEnergyControlStrip
-                    momentumPulseStrip
+                    topRoomFilterSection
 
-                    switch prefs.layoutMode {
-                    case .spotlightAndRooms:
+                    if !prefs.quietModeEnabled {
+                        filterAndViewControlRow
+                    }
+
+                    if prefs.quietModeEnabled {
                         SpotlightAndRoomsView(
                             session: session,
                             tasks: tasks,
                             members: members,
-                            activeMember: activeMember
+                            activeMember: activeMember,
+                            isQuietMode: true
                         )
-                    case .freshnessBatteryStream:
-                        FreshnessBatteryStreamView(
-                            session: session,
-                            tasks: tasks,
-                            members: members,
-                            activeMember: activeMember
-                        )
+                    } else {
+                        switch prefs.layoutMode {
+                        case .spotlightAndRooms:
+                            SpotlightAndRoomsView(
+                                session: session,
+                                tasks: tasks,
+                                members: members,
+                                activeMember: activeMember,
+                                isQuietMode: false
+                            )
+                        case .freshnessBatteryStream:
+                            FreshnessBatteryStreamView(
+                                session: session,
+                                tasks: tasks,
+                                members: members,
+                                activeMember: activeMember
+                            )
+                        }
+
+                        momentumPulseStrip
                     }
 
-                    Spacer(minLength: 110)
+                    Spacer(minLength: 108)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 10)
@@ -114,7 +134,19 @@ struct RootDashboardView: View {
                 .preferredColorScheme(theme.isDark ? .dark : .light)
         }
         .sheet(isPresented: $session.presentingStarterCatalogSheet) {
-            StarterCatalogOnboardingView(session: session, isInitialOnboarding: false)
+            ChoreCatalogSheet(session: session, prefs: prefs, members: members, householdID: household?.id ?? UUID())
+                .fontDesign(theme.fontDesign)
+                .environment(\.adhousedTheme, theme)
+                .preferredColorScheme(theme.isDark ? .dark : .light)
+        }
+        .sheet(isPresented: $session.presentingPartnerSharingSheet) {
+            PartnerSharingSheet(session: session, prefs: prefs)
+                .fontDesign(theme.fontDesign)
+                .environment(\.adhousedTheme, theme)
+                .preferredColorScheme(theme.isDark ? .dark : .light)
+        }
+        .sheet(item: $session.customizingThemePreset) { preset in
+            ThemeColorCustomizerSheet(preset: preset, prefs: prefs)
                 .fontDesign(theme.fontDesign)
                 .environment(\.adhousedTheme, theme)
                 .preferredColorScheme(theme.isDark ? .dark : .light)
@@ -126,57 +158,437 @@ struct RootDashboardView: View {
         }
     }
 
-    // MARK: - Top Header Bar
+    // MARK: - 1. Top Header Bar (Zero Truncation + Lowkey Quiet Button + Partner Menu)
 
     private var topHeaderBar: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(household?.name.uppercased() ?? "ADHOUSED")
-                    .font(.caption.weight(.bold))
-                    .tracking(1.1)
-                    .foregroundStyle(theme.secondaryInk)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                if let householdName = household?.name, !householdName.isEmpty {
+                    Text(householdName.uppercased())
+                        .font(.system(size: 10.5, weight: .bold, design: theme.fontDesign))
+                        .tracking(0.9)
+                        .foregroundStyle(theme.secondaryInk)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 SalientText(
                     greetingTitle,
                     font: .title2.weight(.heavy),
                     color: theme.primaryInk,
-                    lineLimit: 1
+                    lineLimit: 2
                 )
             }
+            .layoutPriority(1)
 
             Spacer(minLength: 6)
 
-            // Shared Household Member Switcher Pill
-            if !members.isEmpty {
+            HStack(spacing: 7) {
+                // Lowkey, Always-Accessible Quiet / Minimal Mode Toggle
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                        prefs.quietModeEnabled.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: prefs.quietModeEnabled ? "leaf.fill" : "leaf")
+                            .font(.caption.weight(.bold))
+                        Text("Quiet")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(prefs.quietModeEnabled ? theme.onAccentPrimary : theme.secondaryInk)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 7 : 99, style: .continuous)
+                            .fill(prefs.quietModeEnabled ? theme.accentPrimary : theme.cardSurface)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 7 : 99, style: .continuous)
+                            .strokeBorder(prefs.quietModeEnabled ? theme.accentPrimary : theme.borderInk, lineWidth: 1.0)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(prefs.quietModeEnabled ? "Exit Quiet Mode" : "Switch to Quiet Minimal Mode")
+
+                // Household Member & iCloud Partner Sharing Menu (Compact Avatar so Header Never Truncates!)
                 Menu {
-                    Section("Viewing & Acting As") {
-                        ForEach(members) { member in
-                            Button {
-                                HapticsEngine.shared.playMechanicalTap()
-                                prefs.activeMemberID = member.id
-                                session.refreshWidgetsAndReminders(in: modelContext)
-                            } label: {
-                                Label(
-                                    "\(member.emoji) \(member.displayName)",
-                                    systemImage: activeMember?.id == member.id ? "checkmark.circle.fill" : "circle"
-                                )
+                    if !members.isEmpty {
+                        Section("Who is using this iPhone?") {
+                            ForEach(members) { member in
+                                Button {
+                                    HapticsEngine.shared.playMechanicalTap()
+                                    prefs.activeMemberID = member.id
+                                    session.refreshWidgetsAndReminders(in: modelContext)
+                                } label: {
+                                    Label(
+                                        "\(member.emoji) \(member.displayName)",
+                                        systemImage: activeMember?.id == member.id ? "checkmark.circle.fill" : "circle"
+                                    )
+                                }
                             }
                         }
                     }
                     Divider()
                     Button {
-                        session.presentingSettingsSheet = true
+                        session.presentingPartnerSharingSheet = true
                     } label: {
-                        Label("Manage Household & Sharing…", systemImage: "person.2.fill")
+                        Label("Invite Partner / iCloud Sharing…", systemImage: "icloud.and.arrow.up.fill")
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(activeMember?.emoji ?? "🏠")
+                            .font(.subheadline)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .foregroundStyle(theme.secondaryInk)
+                    }
+                    .frame(height: 36)
+                    .padding(.horizontal, 9)
+                    .adhousedCard(compact: true)
+                }
+                .accessibilityLabel("Switch member or invite partner via iCloud")
+
+                // Vacation / Break Mode Button
+                let hasActivePause = prefs.activeVacationBreak() != nil || household?.isCurrentlyPausedAway() == true
+                let hasUpcomingBreak = prefs.nextUpcomingVacationBreak() != nil
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    session.presentingVacationBreakSheet = true
+                } label: {
+                    Image(systemName: hasActivePause ? "pause.circle.fill" : (hasUpcomingBreak ? "calendar.badge.clock" : "suitcase.rolling.fill"))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(hasActivePause ? theme.warmingColor : (hasUpcomingBreak ? theme.accentPrimary : theme.primaryInk))
+                        .frame(width: 36, height: 36)
+                        .adhousedCard(highlightTint: hasActivePause ? theme.warmingColor : nil, compact: true)
+                }
+                .accessibilityLabel("Vacation and Break Mode")
+
+                // Themes & Settings Button
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    session.presentingSettingsSheet = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(theme.primaryInk)
+                        .frame(width: 36, height: 36)
+                        .adhousedCard(compact: true)
+                }
+                .accessibilityLabel("Settings and Themes")
+            }
+        }
+    }
+
+    private var greetingTitle: String {
+        if let name = activeMember?.displayName, !name.isEmpty {
+            return "\(name)'s Chores"
+        }
+        return "Home Chores"
+    }
+
+    // MARK: - 2. Browse / Filter by Room RIGHT AT THE TOP
+
+    private var topRoomFilterSection: some View {
+        let populatedRooms = RoomCategory.allCases.filter { room in
+            activeUnarchivedTasks.contains(where: { $0.room == room })
+        }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            if !populatedRooms.isEmpty {
+                HStack(alignment: .center) {
+                    Text("Filter by Room")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(theme.secondaryInk)
+
+                    Spacer()
+
+                    if session.selectedRoom != nil {
+                        Button("Clear Filter") {
+                            HapticsEngine.shared.playMechanicalTap()
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                                session.selectedRoom = nil
+                            }
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(theme.accentPrimary)
+                    }
+
+                    if !prefs.quietModeEnabled {
+                        Button {
+                            HapticsEngine.shared.playMechanicalTap()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                session.showRoomHealthGrid.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: session.showRoomHealthGrid ? "chevron.up" : "square.grid.2x2")
+                                    .font(.caption2.weight(.bold))
+                                Text(session.showRoomHealthGrid ? "Compact" : "Overview")
+                                    .font(.caption2.weight(.bold))
+                            }
+                            .foregroundStyle(theme.secondaryInk)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(theme.canvasSecondary))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Instant 1-Tap Room Filter Pills
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        Button {
+                            HapticsEngine.shared.playMechanicalTap()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                session.selectedRoom = nil
+                            }
+                        } label: {
+                            Text("All Rooms")
+                                .font(.caption.weight(.heavy))
+                                .padding(.horizontal, 13)
+                                .padding(.vertical, 9)
+                        }
+                        .buttonStyle(
+                            TactileActionButtonStyle(
+                                fill: session.selectedRoom == nil ? theme.accentPrimary : theme.cardSurface,
+                                foreground: session.selectedRoom == nil ? theme.onAccentPrimary : theme.primaryInk
+                            )
+                        )
+
+                        ForEach(populatedRooms) { room in
+                            let isSelected = session.selectedRoom == room
+                            let health = FreshnessCalculator.roomHealth(room: room, tasks: activeUnarchivedTasks)
+                            let roomTint = theme.roomAccent(for: room)
+
+                            Button {
+                                HapticsEngine.shared.playMechanicalTap()
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                    session.selectedRoom = isSelected ? nil : room
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if theme.isTerminalHUD || prefs.iconStylePreference == .omarchyPixelHUD {
+                                        OmarchyPixelGlyphView(
+                                            glyphKey: String(room.omarchyIconKey.dropFirst("omarchy:".count)),
+                                            color: isSelected ? .white : roomTint,
+                                            pixelSize: 1.35
+                                        )
+                                    } else {
+                                        Image(systemName: room.symbolName)
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(isSelected ? .white : roomTint)
+                                    }
+
+                                    Text(room.shortTitle)
+                                        .font(.caption.weight(.bold))
+
+                                    if health.dueCount > 0 {
+                                        Text("\(health.dueCount)")
+                                            .font(.system(size: 10, weight: .black, design: theme.fontDesign))
+                                            .foregroundStyle(isSelected ? roomTint : .white)
+                                            .padding(.horizontal, 5.5)
+                                            .padding(.vertical, 1.5)
+                                            .background(
+                                                Capsule().fill(isSelected ? .white : theme.dueNowColor)
+                                            )
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                            }
+                            .buttonStyle(
+                                TactileActionButtonStyle(
+                                    fill: isSelected ? roomTint : theme.cardSurface,
+                                    foreground: isSelected ? .white : theme.primaryInk
+                                )
+                            )
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                // Optional Expandable Room Health Grid right at top
+                if session.showRoomHealthGrid && !prefs.quietModeEnabled {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        ForEach(populatedRooms) { room in
+                            roomOverviewCard(for: room)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    private func roomOverviewCard(for room: RoomCategory) -> some View {
+        let health = FreshnessCalculator.roomHealth(room: room, tasks: activeUnarchivedTasks)
+        let isSelected = session.selectedRoom == room
+        let roomColor = theme.roomAccent(for: room)
+
+        return Button {
+            HapticsEngine.shared.playMechanicalTap()
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                session.selectedRoom = isSelected ? nil : room
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack {
+                    ChoreIconBadgeView(iconSymbol: room.symbolName, tint: roomColor, size: 32)
+                    Spacer()
+                    if health.dueCount > 0 {
+                        Text("\(health.dueCount) due")
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(theme.dueNowColor))
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(theme.freshColor)
+                            .font(.subheadline)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(room.title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(theme.primaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(health.totalCount) \(health.totalCount == 1 ? "chore" : "chores")")
+                        .font(.caption2)
+                        .foregroundStyle(theme.secondaryInk)
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(theme.canvasSecondary)
+                        Capsule()
+                            .fill(health.dueCount > 0 ? theme.dueNowColor : roomColor)
+                            .frame(width: max(8, geo.size.width * health.averageFill))
+                    }
+                }
+                .frame(height: 5)
+            }
+            .padding(12)
+            .adhousedCard(highlightTint: isSelected ? roomColor : nil, compact: true)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 3. Clean Sub-Filter & View Row (Plain English, Zero Clutter)
+
+    private var filterAndViewControlRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                // Quick & Easy (<= 5 min) Filter — replaces cryptic "Low Spoons"!
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                        session.lowSpoonsFilterEnabled.toggle()
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Text(activeMember?.emoji ?? "🏠")
-                            .font(.subheadline)
-                        Text(activeMember?.displayName ?? "All")
-                            .font(.subheadline.weight(.bold))
+                        Image(systemName: "leaf.fill")
+                            .font(.caption2.weight(.bold))
+                        Text("Quick & Easy (≤5m)")
+                            .font(.caption.weight(.bold))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(
+                    TactileActionButtonStyle(
+                        fill: session.lowSpoonsFilterEnabled ? theme.freshColor : theme.cardSurface,
+                        foreground: session.lowSpoonsFilterEnabled ? .white : theme.primaryInk
+                    )
+                )
+
+                // My Turn vs Everyone toggle when sharing with partner
+                if members.count > 1 {
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            session.showEveryoneChores.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: session.showEveryoneChores ? "person.2.fill" : "person.fill")
+                                .font(.caption2.weight(.bold))
+                            Text(session.showEveryoneChores ? "Showing Everyone" : "My Turn Only")
+                                .font(.caption.weight(.bold))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                    }
+                    .buttonStyle(
+                        TactileActionButtonStyle(
+                            fill: session.showEveryoneChores ? theme.accentSecondary : theme.cardSurface,
+                            foreground: session.showEveryoneChores ? theme.onAccentSecondary : theme.primaryInk
+                        )
+                    )
+                }
+
+                // Focus List vs Battery View toggle
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                        prefs.layoutMode = (prefs.layoutMode == .spotlightAndRooms) ? .freshnessBatteryStream : .spotlightAndRooms
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: prefs.layoutMode.symbolName)
+                            .font(.caption2.weight(.bold))
+                        Text(prefs.layoutMode.shortLabel)
+                            .font(.caption.weight(.bold))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(TactileActionButtonStyle(fill: theme.cardSurface, foreground: theme.primaryInk))
+
+                // Quick Theme & Color Customizer Menu
+                Menu {
+                    Button {
+                        session.customizingThemePreset = prefs.themePreset
+                    } label: {
+                        Label("Customize \(prefs.themePreset.shortLabel) Colors…", systemImage: "eyedropper.halffull")
+                    }
+                    Divider()
+                    ForEach(ThemeFamily.allCases) { family in
+                        Section(family.sectionHeader) {
+                            ForEach(family.presets) { preset in
+                                Button {
+                                    HapticsEngine.shared.playMechanicalTap()
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        prefs.selectThemePreset(preset)
+                                    }
+                                    #if canImport(WidgetKit)
+                                    WidgetCenter.shared.reloadAllTimelines()
+                                    #endif
+                                } label: {
+                                    Label(
+                                        preset.title,
+                                        systemImage: prefs.themePreset == preset
+                                            ? "checkmark.circle.fill"
+                                            : (preset.isOmarchyQuattroStyle ? "terminal.fill" : "paintpalette")
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: theme.isTerminalHUD ? "terminal.fill" : "paintpalette.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(theme.accentPrimary)
+                        Text(prefs.themePreset.shortLabel)
+                            .font(.caption.weight(.bold))
                             .foregroundStyle(theme.primaryInk)
                         Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 8.5, weight: .bold))
                             .foregroundStyle(theme.secondaryInk)
                     }
                     .padding(.horizontal, 11)
@@ -184,83 +596,56 @@ struct RootDashboardView: View {
                     .adhousedCard(compact: true)
                 }
             }
-
-            // Vacation / Break Mode Button (Date & Time Range Pause)
-            let hasActivePause = prefs.activeVacationBreak() != nil || household?.isCurrentlyPausedAway() == true
-            let hasUpcomingBreak = prefs.nextUpcomingVacationBreak() != nil
-            Button {
-                HapticsEngine.shared.playMechanicalTap()
-                session.presentingVacationBreakSheet = true
-            } label: {
-                Image(systemName: hasActivePause ? "pause.circle.fill" : (hasUpcomingBreak ? "calendar.badge.clock" : "suitcase.rolling.fill"))
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(hasActivePause ? theme.warmingColor : (hasUpcomingBreak ? theme.accentPrimary : theme.primaryInk))
-                    .frame(width: 38, height: 38)
-                    .adhousedCard(highlightTint: hasActivePause ? theme.warmingColor : nil, compact: true)
-            }
-            .accessibilityLabel("Vacation and Break Mode")
-
-            // Theme & Settings Button
-            Button {
-                HapticsEngine.shared.playMechanicalTap()
-                session.presentingSettingsSheet = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(theme.primaryInk)
-                    .frame(width: 38, height: 38)
-                    .adhousedCard(compact: true)
-            }
-            .accessibilityLabel("Settings and Theme Switcher")
+            .padding(.vertical, 2)
         }
     }
 
-    private var greetingTitle: String {
-        if let name = activeMember?.displayName {
-            return "\(name)'s Focus"
-        }
-        return "Home Focus"
-    }
-
-    // MARK: - Vacation / Break Mode Status Banner
+    // MARK: - 4. Vacation / Break Mode Status Banner (Wrapping, Zero Truncation)
 
     @ViewBuilder
     private var awayPauseStatusBanner: some View {
         if let activeBreak = prefs.activeVacationBreak() {
-            HStack(spacing: 12) {
-                Image(systemName: activeBreak.iconSymbol)
-                    .font(.title3)
-                    .foregroundStyle(theme.warmingColor)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(activeBreak.title) — Chores & Alerts Paused")
-                        .font(.subheadline.weight(.heavy))
-                        .foregroundStyle(theme.primaryInk)
-                    Text(activeBreak.formattedRangeSummary())
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(theme.secondaryInk)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: activeBreak.iconSymbol)
+                        .font(.title3)
+                        .foregroundStyle(theme.warmingColor)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(activeBreak.title) — Chores & Alerts Paused")
+                            .font(.subheadline.weight(.heavy))
+                            .foregroundStyle(theme.primaryInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(activeBreak.formattedRangeSummary())
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(theme.secondaryInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 4)
-                Button {
-                    HapticsEngine.shared.playMechanicalTap()
-                    session.presentingVacationBreakSheet = true
-                } label: {
-                    Text("Dates")
-                        .font(.caption.weight(.bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                }
-                .buttonStyle(TactileActionButtonStyle(fill: theme.cardElevatedSurface, foreground: theme.primaryInk))
 
-                Button {
-                    HapticsEngine.shared.playMechanicalTap()
-                    try? TaskActionService.clearAwayPause(in: modelContext)
-                } label: {
-                    Text("I'm Back")
-                        .font(.caption.weight(.heavy))
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
+                HStack(spacing: 8) {
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        session.presentingVacationBreakSheet = true
+                    } label: {
+                        Text("Edit Dates")
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                    }
+                    .buttonStyle(TactileActionButtonStyle(fill: theme.cardElevatedSurface, foreground: theme.primaryInk))
+
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        try? TaskActionService.clearAwayPause(in: modelContext)
+                    } label: {
+                        Text("I'm Back")
+                            .font(.caption.weight(.heavy))
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 7)
+                    }
+                    .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: Color(hex: "#111216")))
                 }
-                .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: Color(hex: "#111216")))
             }
             .padding(13)
             .adhousedCard(highlightTint: theme.warmingColor, compact: true)
@@ -270,24 +655,25 @@ struct RootDashboardView: View {
                     .font(.title3)
                     .foregroundStyle(theme.warmingColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Out of House — Alerts Paused")
+                    Text("Reminders Paused")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(theme.primaryInk)
-                    Text("Persistent pings auto-resume at \(pauseUntil.formatted(date: .abbreviated, time: .shortened))")
+                    Text("Resumes at \(pauseUntil.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(theme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 4)
                 Button {
                     HapticsEngine.shared.playMechanicalTap()
                     try? TaskActionService.clearAwayPause(in: modelContext)
                 } label: {
-                    Text("I'm Back")
+                    Text("Resume")
                         .font(.caption.weight(.bold))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                 }
-                .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: .black))
+                .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: Color(hex: "#111216")))
             }
             .padding(13)
             .adhousedCard(highlightTint: theme.warmingColor, compact: true)
@@ -297,14 +683,16 @@ struct RootDashboardView: View {
                     .font(.title3)
                     .foregroundStyle(theme.accentPrimary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Scheduled Break: \(upcoming.title)")
+                    Text("Upcoming Break: \(upcoming.title)")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(theme.primaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(upcoming.formattedRangeSummary())
                         .font(.caption)
                         .foregroundStyle(theme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 4)
                 Button {
                     HapticsEngine.shared.playMechanicalTap()
                     session.presentingVacationBreakSheet = true
@@ -321,183 +709,39 @@ struct RootDashboardView: View {
         }
     }
 
-    // MARK: - Usability Mode & Low-Spoons Filter Strip
-
-    private var usabilityAndEnergyControlStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                // Switch between Today Spotlight + Rooms & Freshness Battery Stream
-                ForEach(LayoutUsabilityMode.allCases) { mode in
-                    let isSelected = prefs.layoutMode == mode
-                    Button {
-                        HapticsEngine.shared.playMechanicalTap()
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                            prefs.layoutMode = mode
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: mode.symbolName)
-                                .font(.caption.weight(.bold))
-                            Text(mode.shortLabel)
-                                .font(.subheadline.weight(.bold))
-                        }
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 9)
-                    }
-                    .buttonStyle(
-                        TactileActionButtonStyle(
-                            fill: isSelected ? theme.accentPrimary : theme.cardSurface,
-                            foreground: isSelected ? theme.onAccentPrimary : theme.primaryInk
-                        )
-                    )
-                }
-
-                // Low-Spoons / Quick Wins Filter
-                Button {
-                    HapticsEngine.shared.playMechanicalTap()
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
-                        session.lowSpoonsFilterEnabled.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bolt.heart.fill")
-                            .font(.caption.weight(.bold))
-                        Text("Low Spoons (≤5m)")
-                            .font(.subheadline.weight(.bold))
-                    }
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 9)
-                }
-                .buttonStyle(
-                    TactileActionButtonStyle(
-                        fill: session.lowSpoonsFilterEnabled ? theme.warmingColor : theme.cardSurface,
-                        foreground: session.lowSpoonsFilterEnabled ? Color(hex: "#111216") : theme.primaryInk
-                    )
-                )
-
-                // Vacation / Break Mode Quick Trigger Pill
-                let activeBreak = prefs.activeVacationBreak()
-                let upcomingBreak = prefs.nextUpcomingVacationBreak()
-                Button {
-                    HapticsEngine.shared.playMechanicalTap()
-                    session.presentingVacationBreakSheet = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: activeBreak != nil ? "pause.circle.fill" : (upcomingBreak != nil ? "calendar.badge.clock" : "tree.fill"))
-                            .font(.caption.weight(.bold))
-                        Text(activeBreak != nil ? "On Break" : (upcomingBreak != nil ? "Break Set" : "Vacation / Break"))
-                            .font(.subheadline.weight(.bold))
-                    }
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 9)
-                }
-                .buttonStyle(
-                    TactileActionButtonStyle(
-                        fill: activeBreak != nil ? theme.warmingColor : (upcomingBreak != nil ? theme.accentSecondary : theme.cardSurface),
-                        foreground: activeBreak != nil ? Color(hex: "#111216") : (upcomingBreak != nil ? theme.onAccentSecondary : theme.primaryInk)
-                    )
-                )
-
-                // Quick Multi-Theme Switcher Menu (Originals + Omarchy Quattro OS 4.x)
-                Menu {
-                    ForEach(ThemeFamily.allCases) { family in
-                        Section(family.sectionHeader) {
-                            ForEach(family.presets) { preset in
-                                Button {
-                                    HapticsEngine.shared.playMechanicalTap()
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                        prefs.selectThemePreset(preset)
-                                    }
-                                    #if canImport(WidgetKit)
-                                    WidgetCenter.shared.reloadAllTimelines()
-                                    #endif
-                                } label: {
-                                    Label(
-                                        preset.title,
-                                        systemImage: prefs.themePreset == preset ? "checkmark.circle.fill" : (preset.isOmarchyQuattroStyle ? "terminal.fill" : "paintpalette")
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Divider()
-                    Button {
-                        session.presentingSettingsSheet = true
-                    } label: {
-                        Label("Theme Studio & Light/Dark…", systemImage: "slider.horizontal.3")
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: theme.isTerminalHUD ? "terminal.fill" : "paintpalette.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(theme.accentPrimary)
-                        Text(prefs.themePreset.shortLabel)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(theme.primaryInk)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(theme.secondaryInk)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .adhousedCard(compact: true)
-                }
-            }
-            .padding(.vertical, 3)
-            .padding(.trailing, 6)
-        }
-    }
-
-    // MARK: - Shame-Free Momentum Pulse Strip
+    // MARK: - 5. Subtle Weekly Progress Card (Placed Calmly Below Chores)
 
     private var momentumPulseStrip: some View {
         let stats = FreshnessCalculator.momentumStats(completions: completions)
 
         return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(theme.hudTag("HOUSEHOLD MOMENTUM"))
+                Text("THIS WEEK")
                     .font(.system(size: 10, weight: .heavy, design: theme.fontDesign))
-                    .tracking(0.9)
+                    .tracking(0.8)
                     .foregroundStyle(theme.accentPrimary)
                 SalientText(
                     stats.headline,
                     font: .footnote.weight(.semibold),
                     color: theme.primaryInk,
-                    lineLimit: 1
+                    lineLimit: nil
                 )
             }
             Spacer(minLength: 8)
             HStack(spacing: 5) {
                 ForEach(Array(stats.recent7DayActivityDots.enumerated()), id: \.offset) { _, active in
-                    Group {
-                        if theme.isTerminalHUD {
-                            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                .fill(active ? theme.accentPrimary : theme.canvasSecondary)
-                                .frame(width: 9, height: 9)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                        .strokeBorder(theme.borderInk.opacity(0.75), lineWidth: 0.9)
-                                }
-                        } else {
-                            Circle()
-                                .fill(active ? theme.accentPrimary : theme.canvasSecondary)
-                                .frame(width: 9, height: 9)
-                                .overlay {
-                                    if theme.usesHardOffsetShadow {
-                                        Circle().strokeBorder(theme.borderInk.opacity(0.6), lineWidth: 1)
-                                    }
-                                }
-                        }
-                    }
+                    Circle()
+                        .fill(active ? theme.accentPrimary : theme.canvasSecondary)
+                        .frame(width: 8.5, height: 8.5)
                 }
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 12)
         .adhousedCard(compact: true)
     }
 
-    // MARK: - Bottom Floating Dock (Undo Toast + Active Sprint Bar + Add Chore)
+    // MARK: - 6. Bottom Floating Dock (Undo Toast + Active Timer + Catalog & New Chore)
 
     private var bottomFloatingDock: some View {
         VStack(spacing: 10) {
@@ -506,11 +750,12 @@ struct RootDashboardView: View {
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(theme.freshColor)
                         .font(.title3)
-                    Text("Marked **\(toast.taskTitle)** fresh!")
+                    Text("Completed **\(toast.taskTitle)**")
                         .font(.subheadline)
                         .foregroundStyle(theme.primaryInk)
-                        .lineLimit(1)
-                    Spacer()
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 6)
                     Button("Undo") {
                         session.performUndoToast(in: modelContext)
                     }
@@ -533,16 +778,17 @@ struct RootDashboardView: View {
                         Image(systemName: "timer")
                             .font(.headline.weight(.bold))
                             .foregroundStyle(theme.warmingColor)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Beat the Clock: \(sprint.taskTitle)")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Focus Timer: \(sprint.taskTitle)")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(theme.primaryInk)
-                                .lineLimit(1)
-                            Text(remaining > 0 ? String(format: "%d:%02d left — you got this!", mins, secs) : "Time's up — tap Done if finished!")
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(remaining > 0 ? String(format: "%d:%02d left", mins, secs) : "Timer finished — tap Done!")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(theme.secondaryInk)
                         }
-                        Spacer()
+                        Spacer(minLength: 6)
                         Button {
                             if let match = tasks.first(where: { $0.id == sprint.taskID }) {
                                 session.presentingSprintSheetForTask = match
@@ -553,7 +799,7 @@ struct RootDashboardView: View {
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                         }
-                        .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: .black))
+                        .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: Color(hex: "#111216")))
                     }
                     .padding(.horizontal, 15)
                     .padding(.vertical, 11)
@@ -568,7 +814,7 @@ struct RootDashboardView: View {
                     session.presentingStarterCatalogSheet = true
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "sparkles.rectangle.stack.fill")
+                        Image(systemName: "books.vertical.fill")
                         Text("Catalog")
                     }
                     .font(.subheadline.weight(.bold))
@@ -586,7 +832,7 @@ struct RootDashboardView: View {
                     HStack(spacing: 7) {
                         Image(systemName: "plus.circle.fill")
                             .font(.headline)
-                        Text("New Chore")
+                        Text("Add Chore")
                             .font(.subheadline.weight(.heavy))
                     }
                     .padding(.horizontal, 20)

@@ -1,7 +1,83 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import CloudKit
 import ADHOUSEDCore
+#if canImport(UIKit)
+import UIKit
+#endif
+
+@MainActor
+final class SharedContainerRegistry {
+    static let shared = SharedContainerRegistry()
+    var modelContainer: ModelContainer?
+}
+
+#if canImport(UIKit)
+final class ADHOUSEDSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        if let metadata = connectionOptions.cloudKitShareMetadata {
+            acceptIncomingCloudShare(metadata)
+        }
+    }
+
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata
+    ) {
+        acceptIncomingCloudShare(cloudKitShareMetadata)
+    }
+
+    private func acceptIncomingCloudShare(_ metadata: CKShare.Metadata) {
+        Task { @MainActor in
+            guard let container = SharedContainerRegistry.shared.modelContainer else { return }
+            try? await HouseholdCloudSyncService.shared.acceptShareInvitation(
+                metadata: metadata,
+                in: container.mainContext
+            )
+            await ReminderCoordinator.shared.reconcileAll(in: container.mainContext)
+        }
+    }
+}
+
+final class ADHOUSEDAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        application.registerForRemoteNotifications()
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = ADHOUSEDSceneDelegate.self
+        return config
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        if CKNotification(fromRemoteNotificationDictionary: userInfo) != nil {
+            if let container = SharedContainerRegistry.shared.modelContainer {
+                try? await HouseholdCloudSyncService.shared.syncWithCloud(in: container.mainContext)
+                await ReminderCoordinator.shared.reconcileAll(in: container.mainContext)
+                return .newData
+            }
+        }
+        return .noData
+    }
+}
+#endif
 
 final class NotificationDelegateBridge: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     var modelContainer: ModelContainer?
@@ -40,7 +116,6 @@ final class NotificationDelegateBridge: NSObject, UNUserNotificationCenterDelega
         case NagNotificationConstants.actionAway3Hours:
             try? TaskActionService.pauseReminders(scope: .entireHousehold, durationMinutes: 180, in: context)
         default:
-            // Note: Swiping/dismissing (`UNNotificationDismissActionIdentifier`) intentionally does NOT cancel remaining cascade!
             break
         }
         await ReminderCoordinator.shared.reconcileAll(in: context)
@@ -49,6 +124,9 @@ final class NotificationDelegateBridge: NSObject, UNUserNotificationCenterDelega
 
 @main
 struct ADHOUSEDApp: App {
+    #if canImport(UIKit)
+    @UIApplicationDelegateAdaptor(ADHOUSEDAppDelegate.self) private var appDelegate
+    #endif
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer
     private let notificationBridge = NotificationDelegateBridge()
@@ -63,6 +141,7 @@ struct ADHOUSEDApp: App {
             resolvedContainer = try! SharedAppGroup.makeModelContainer(inMemory: true)
         }
         self.container = resolvedContainer
+        SharedContainerRegistry.shared.modelContainer = resolvedContainer
         self.notificationBridge.modelContainer = resolvedContainer
         UNUserNotificationCenter.current().delegate = self.notificationBridge
         NagBudgetScheduler.shared.registerInteractiveCategories()
@@ -75,10 +154,22 @@ struct ADHOUSEDApp: App {
                 .onAppear {
                     session.applyLaunchArgumentsIfPresent(ProcessInfo.processInfo.arguments, in: container.mainContext)
                 }
+                .onOpenURL { url in
+                    guard url.pathExtension.lowercased() == "json" else { return }
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer {
+                        if accessed { url.stopAccessingSecurityScopedResource() }
+                    }
+                    if let data = try? Data(contentsOf: url) {
+                        try? HouseholdCloudSyncService.shared.importHouseholdJSON(data, in: container.mainContext)
+                        session.refreshWidgetsAndReminders(in: container.mainContext)
+                    }
+                }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
                         prefs.reloadFromSharedDefaults()
                         Task { @MainActor in
+                            try? await HouseholdCloudSyncService.shared.syncWithCloud(in: container.mainContext)
                             await ReminderCoordinator.shared.reconcileAll(in: container.mainContext)
                         }
                     }
@@ -110,7 +201,12 @@ private struct ThemedRootContainer: View {
     }
 
     var body: some View {
-        let tokens = ADHOUSEDThemeTokens.resolve(preset: prefs.themePreset, colorScheme: effectiveColorScheme)
+        let activeOverrides = prefs.colorOverrides(for: prefs.themePreset)
+        let tokens = ADHOUSEDThemeTokens.resolve(
+            preset: prefs.themePreset,
+            colorScheme: effectiveColorScheme,
+            overrides: activeOverrides
+        )
 
         Group {
             if !prefs.hasCompletedOnboarding && tasks.isEmpty {

@@ -13,8 +13,7 @@ struct StarterCatalogOnboardingView: View {
 
     @State private var householdName: String = "Our Home"
     @State private var memberDrafts: [(name: String, emoji: String, hex: String)] = [
-        ("Alex", "🦊", "#3E9B6C"),
-        ("Sam", "🦦", "#3B66FF")
+        ("Me", "🦊", "#3E9B6C")
     ]
     @State private var newMemberName: String = ""
     @State private var selectedIDs: Set<String> = Set(
@@ -39,7 +38,7 @@ struct StarterCatalogOnboardingView: View {
                         householdMembersSection
                     }
 
-                    antiAvalancheBannerSection
+                    spreadStartDatesBannerSection
                     roomFilterPillsSection
                     catalogListSection
 
@@ -56,9 +55,9 @@ struct StarterCatalogOnboardingView: View {
     private var headerIntroSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(isInitialOnboarding ? "WELCOME TO ADHOUSED" : "STARTER CHORE CATALOG")
+                Text(isInitialOnboarding ? "WELCOME TO ADHOUSED" : "CHORE CATALOG")
                     .font(.caption.weight(.black))
-                    .tracking(1.1)
+                    .tracking(1.0)
                     .foregroundStyle(theme.accentPrimary)
                 Spacer()
                 if !isInitialOnboarding {
@@ -70,53 +69,52 @@ struct StarterCatalogOnboardingView: View {
 
             SalientText(
                 isInitialOnboarding
-                    ? "Pick your recurring chores — zero blank-page overwhelm."
-                    : "Tap common chores to add to your rooms",
+                    ? "Pick the household chores you want to track."
+                    : "Tap chores to add to your rooms",
                 font: .title2.weight(.heavy),
                 color: theme.primaryInk
             )
 
-            Text("Pre-filled with realistic frequencies, Spoons tags, and Anti-Avalanche staggering so Day 1 never dumps 20 alarms on you.")
+            Text("Pre-filled with realistic schedules and quick time estimates. You can add custom chores or invite your partner via iCloud anytime.")
                 .font(.footnote)
                 .foregroundStyle(theme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var householdMembersSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("HOUSEHOLD & MEMBERS")
+            Text("YOUR HOME & PEOPLE")
                 .font(.caption.weight(.heavy))
                 .tracking(0.8)
                 .foregroundStyle(theme.secondaryInk)
 
-            TextField("Household Name", text: $householdName)
+            TextField("Home Name (e.g., Our Home)", text: $householdName)
                 .font(.headline.weight(.bold))
                 .foregroundStyle(theme.primaryInk)
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12).fill(theme.canvasSecondary))
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(memberDrafts.enumerated()), id: \.offset) { idx, member in
-                        HStack(spacing: 6) {
-                            Text(member.emoji)
-                            Text(member.name)
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(theme.primaryInk)
-                            if memberDrafts.count > 1 {
-                                Button {
-                                    memberDrafts.remove(at: idx)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(theme.secondaryInk)
-                                }
+            FlowChipLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+                ForEach(Array(memberDrafts.enumerated()), id: \.offset) { idx, member in
+                    HStack(spacing: 6) {
+                        Text(member.emoji)
+                        Text(member.name)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(theme.primaryInk)
+                        if memberDrafts.count > 1 {
+                            Button {
+                                memberDrafts.remove(at: idx)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(theme.secondaryInk)
                             }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(theme.canvasSecondary))
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(theme.canvasSecondary))
                 }
             }
 
@@ -149,8 +147,8 @@ struct StarterCatalogOnboardingView: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(theme.secondaryInk)
                     Picker("Sharing", selection: $defaultMultiMemberMode) {
-                        Text("Alternating Turns").tag(AssignmentMode.alternating)
-                        Text("Up for Grabs").tag(AssignmentMode.anyone)
+                        Text("Take Turns").tag(AssignmentMode.alternating)
+                        Text("Anyone Can Do").tag(AssignmentMode.anyone)
                     }
                     .pickerStyle(.segmented)
                 }
@@ -160,23 +158,25 @@ struct StarterCatalogOnboardingView: View {
         .adhousedCard()
     }
 
-    private var antiAvalancheBannerSection: some View {
+    private var spreadStartDatesBannerSection: some View {
         HStack(spacing: 12) {
-            Image(systemName: "shield.lefthalf.filled.badge.checkmark")
+            Image(systemName: "calendar.badge.checkmark")
                 .font(.title2)
                 .foregroundStyle(theme.accentPrimary)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Anti-Avalanche Staggering")
+                Text("Spread Out First Due Dates")
                     .font(.subheadline.weight(.heavy))
                     .foregroundStyle(theme.primaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(
                     autoStaggerEnabled
-                        ? "Caps Day 1 to just 2 due tasks and spreads the rest smoothly across the week."
-                        : "Manual mode: tap Fresh / Soon / Due Now on each selected chore below."
+                        ? "Starts with only 2 chores due today and spreads the rest smoothly across the week."
+                        : "Manual mode: choose Just Done, Due Soon, or Due Today on each chore below."
                 )
                 .font(.caption)
                 .foregroundStyle(theme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
@@ -206,7 +206,7 @@ struct StarterCatalogOnboardingView: View {
                     )
                 )
 
-                ForEach(RoomCategory.allCases.filter { $0 != .general }) { room in
+                ForEach(RoomCategory.allCases) { room in
                     Button {
                         selectedRoomFilter = room
                     } label: {
@@ -232,7 +232,7 @@ struct StarterCatalogOnboardingView: View {
 
     private var catalogListSection: some View {
         let existingTitles = Set(existingTasks.map { $0.title.lowercased() })
-        let items = StarterCatalog.allTemplates.filter { tpl in
+        let items = StarterCatalog.combinedTemplates.filter { tpl in
             if let room = selectedRoomFilter, tpl.room != room { return false }
             if !isInitialOnboarding && existingTitles.contains(tpl.title.lowercased()) { return false }
             return true
@@ -257,19 +257,22 @@ struct StarterCatalogOnboardingView: View {
                                 .font(.title3.weight(.bold))
                                 .foregroundStyle(isSelected ? theme.accentPrimary : theme.secondaryInk)
 
-                            Image(systemName: tpl.iconSymbol)
-                                .font(.headline)
-                                .foregroundStyle(roomColor)
-                                .frame(width: 28)
+                            ChoreIconBadgeView(
+                                iconSymbol: tpl.iconSymbol,
+                                tint: roomColor,
+                                size: 36
+                            )
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(tpl.title)
                                     .font(.subheadline.weight(.bold))
                                     .foregroundStyle(theme.primaryInk)
                                     .multilineTextAlignment(.leading)
-                                Text("\(tpl.room.shortTitle) · \(tpl.cadenceTag) · ⚡ \(tpl.estimatedMinutes)m · \(tpl.energyLevel.badgeText)")
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text("\(tpl.room.shortTitle) · \(tpl.cadenceTag) · ~\(tpl.estimatedMinutes) min · \(tpl.energyLevel.badgeText)")
                                     .font(.caption2)
                                     .foregroundStyle(theme.secondaryInk)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                         }
@@ -277,10 +280,11 @@ struct StarterCatalogOnboardingView: View {
                     .buttonStyle(.plain)
 
                     if isSelected && !autoStaggerEnabled {
-                        HStack(spacing: 6) {
-                            Text("Initial state:")
+                        FlowChipLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+                            Text("Start as:")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(theme.secondaryInk)
+                                .padding(.vertical, 4)
                             ForEach([InitialFreshnessSeed.fresh, .dueSoon, .dueNow]) { seedOpt in
                                 let chosen = (seedOverrides[tpl.id] ?? .fresh) == seedOpt
                                 Button {
@@ -293,7 +297,7 @@ struct StarterCatalogOnboardingView: View {
                                         .background(
                                             Capsule().fill(chosen ? theme.accentPrimary : theme.canvasSecondary)
                                         )
-                                        .foregroundStyle(chosen ? .white : theme.primaryInk)
+                                        .foregroundStyle(chosen ? theme.onAccentPrimary : theme.primaryInk)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -317,8 +321,8 @@ struct StarterCatalogOnboardingView: View {
                     Image(systemName: "sparkles")
                     Text(
                         selectedIDs.isEmpty
-                            ? "Start with Clean Slate"
-                            : "Launch with \(selectedIDs.count) Chores"
+                            ? (isInitialOnboarding ? "Start with Clean Slate" : "Done")
+                            : (isInitialOnboarding ? "Start with \(selectedIDs.count) Chores" : "Add \(selectedIDs.count) Chores")
                     )
                 }
                 .font(.headline.weight(.heavy))
@@ -338,7 +342,7 @@ struct StarterCatalogOnboardingView: View {
     }
 
     private func commitStarterSelection() {
-        let chosenTemplates = StarterCatalog.allTemplates.filter { selectedIDs.contains($0.id) }
+        let chosenTemplates = StarterCatalog.combinedTemplates.filter { selectedIDs.contains($0.id) }
         let mapped: [(StarterChoreTemplate, InitialFreshnessSeed, AssignmentMode)] = chosenTemplates.map { tpl in
             let seed: InitialFreshnessSeed = autoStaggerEnabled
                 ? .autoStagger
@@ -346,12 +350,19 @@ struct StarterCatalogOnboardingView: View {
             return (tpl, seed, defaultMultiMemberMode)
         }
 
-        _ = try? TaskActionService.bootstrapHousehold(
-            householdName: householdName,
-            memberSpecs: memberDrafts,
-            selectedTemplates: mapped,
-            in: modelContext
-        )
+        if isInitialOnboarding {
+            _ = try? TaskActionService.bootstrapHousehold(
+                householdName: householdName,
+                memberSpecs: memberDrafts,
+                selectedTemplates: mapped,
+                in: modelContext
+            )
+        } else {
+            _ = try? TaskActionService.adoptCatalogTemplates(
+                mapped,
+                in: modelContext
+            )
+        }
 
         Task {
             _ = await NagBudgetScheduler.shared.requestNotificationAuthorization()

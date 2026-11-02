@@ -1,24 +1,25 @@
 import Foundation
 
-// MARK: - Curated Household Starter Catalog & Anti-Avalanche Seeder
+// MARK: - Curated Household & Life Activity Catalog + User Custom Templates
 
-public struct StarterChoreTemplate: Identifiable, Hashable, Sendable {
-    public let id: String
-    public let title: String
-    public let iconSymbol: String
-    public let room: RoomCategory
-    public let scheduleMode: ScheduleMode
-    public let intervalUnit: IntervalUnit
-    public let intervalCount: Int
-    public let fixedWeekdays: [Int]
-    public let energyLevel: EnergyLevel
-    public let estimatedMinutes: Int
-    public let suggestedNagMinutes: Int
-    public let suggestedTier: ReminderIntensityTier
-    public let recommendedByDefault: Bool
+public struct StarterChoreTemplate: Identifiable, Codable, Hashable, Sendable {
+    public var id: String
+    public var title: String
+    public var iconSymbol: String
+    public var room: RoomCategory
+    public var scheduleMode: ScheduleMode
+    public var intervalUnit: IntervalUnit
+    public var intervalCount: Int
+    public var fixedWeekdays: [Int]
+    public var energyLevel: EnergyLevel
+    public var estimatedMinutes: Int
+    public var suggestedNagMinutes: Int
+    public var suggestedTier: ReminderIntensityTier
+    public var recommendedByDefault: Bool
+    public var isCustom: Bool
 
     public init(
-        id: String,
+        id: String = "custom_\(UUID().uuidString)",
         title: String,
         iconSymbol: String,
         room: RoomCategory,
@@ -30,7 +31,8 @@ public struct StarterChoreTemplate: Identifiable, Hashable, Sendable {
         estimatedMinutes: Int = 5,
         suggestedNagMinutes: Int = 60,
         suggestedTier: ReminderIntensityTier = .gentlePings,
-        recommendedByDefault: Bool = false
+        recommendedByDefault: Bool = false,
+        isCustom: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -45,13 +47,15 @@ public struct StarterChoreTemplate: Identifiable, Hashable, Sendable {
         self.suggestedNagMinutes = suggestedNagMinutes
         self.suggestedTier = suggestedTier
         self.recommendedByDefault = recommendedByDefault
+        self.isCustom = isCustom
     }
 
     public var cadenceTag: String {
         switch scheduleMode {
         case .rollingFromLastDone:
             if intervalCount == 1 && intervalUnit == .days { return "Daily" }
-            if intervalCount == 1 && intervalUnit == .weeks { return "Every 7d" }
+            if intervalCount == 1 && intervalUnit == .weeks { return "Weekly" }
+            if intervalCount == 7 && intervalUnit == .days { return "Weekly" }
             return "Every \(intervalCount) \(intervalCount == 1 ? intervalUnit.singularLabel : intervalUnit.pluralLabel)"
         case .fixedCalendar:
             let formatter = Calendar.current.shortWeekdaySymbols
@@ -65,6 +69,11 @@ public struct StarterChoreTemplate: Identifiable, Hashable, Sendable {
 }
 
 public enum StarterCatalog {
+    /// Combined catalog of user-created custom templates (shown first) plus built-in household & life templates.
+    public static var combinedTemplates: [StarterChoreTemplate] {
+        ADHOUSEDPreferences.shared.customCatalogTemplates + allTemplates
+    }
+
     public static let allTemplates: [StarterChoreTemplate] = [
         // Kitchen
         StarterChoreTemplate(
@@ -76,7 +85,7 @@ public enum StarterCatalog {
             intervalCount: 1,
             energyLevel: .lowSpoons,
             estimatedMinutes: 5,
-            suggestedNagMinutes: 45,
+            suggestedNagMinutes: 60,
             suggestedTier: .stickyLiveActivity,
             recommendedByDefault: true
         ),
@@ -105,7 +114,7 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "kitchen_fridge_toss",
-            title: "Toss expired fridge leftovers",
+            title: "Clear old leftovers from fridge",
             iconSymbol: "refrigerator.fill",
             room: .kitchen,
             intervalUnit: .days,
@@ -116,11 +125,31 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "kitchen_coffee_descale",
-            title: "Descale coffee maker / kettle",
+            title: "Clean coffee machine / kettle",
             iconSymbol: "cup.and.saucer.fill",
             room: .kitchen,
             intervalUnit: .days,
             intervalCount: 30,
+            energyLevel: .steady,
+            estimatedMinutes: 10
+        ),
+        StarterChoreTemplate(
+            id: "kitchen_water_bottles",
+            title: "Wash reusable water bottles",
+            iconSymbol: "waterbottle.fill",
+            room: .kitchen,
+            intervalUnit: .days,
+            intervalCount: 3,
+            energyLevel: .lowSpoons,
+            estimatedMinutes: 3
+        ),
+        StarterChoreTemplate(
+            id: "kitchen_groceries",
+            title: "Check pantry & plan groceries",
+            iconSymbol: "cart.fill",
+            room: .kitchen,
+            intervalUnit: .days,
+            intervalCount: 7,
             energyLevel: .steady,
             estimatedMinutes: 10
         ),
@@ -139,7 +168,7 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "bath_toilet",
-            title: "Quick swish & wipe toilet",
+            title: "Quick brush & wipe toilet",
             iconSymbol: "toilet.fill",
             room: .bathroom,
             intervalUnit: .days,
@@ -150,8 +179,8 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "bath_towels",
-            title: "Swap out bath & hand towels",
-            iconSymbol: "Hands.and.sparkles.fill".lowercased() == "hands.and.sparkles.fill" ? "tshirt.fill" : "tshirt.fill",
+            title: "Swap bath & hand towels",
+            iconSymbol: "tshirt.fill",
             room: .bathroom,
             intervalUnit: .days,
             intervalCount: 5,
@@ -160,13 +189,23 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "bath_shower_scrub",
-            title: "Scrub shower / tub surfaces",
+            title: "Clean shower / tub surfaces",
             iconSymbol: "shower.fill",
             room: .bathroom,
             intervalUnit: .days,
             intervalCount: 14,
             energyLevel: .deepClean,
             estimatedMinutes: 15
+        ),
+        StarterChoreTemplate(
+            id: "bath_mat_wash",
+            title: "Wash bath mat",
+            iconSymbol: "washer.fill",
+            room: .bathroom,
+            intervalUnit: .days,
+            intervalCount: 14,
+            energyLevel: .lowSpoons,
+            estimatedMinutes: 3
         ),
 
         // Bedroom
@@ -196,7 +235,7 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "bed_floordrobe",
-            title: "Reset chair / floor clothes pile",
+            title: "Put away chair / floor clothes pile",
             iconSymbol: "hanger",
             room: .bedroom,
             intervalUnit: .days,
@@ -204,11 +243,21 @@ public enum StarterCatalog {
             energyLevel: .lowSpoons,
             estimatedMinutes: 5
         ),
+        StarterChoreTemplate(
+            id: "bed_air_room",
+            title: "Open windows & air out bedroom",
+            iconSymbol: "wind",
+            room: .bedroom,
+            intervalUnit: .days,
+            intervalCount: 2,
+            energyLevel: .lowSpoons,
+            estimatedMinutes: 2
+        ),
 
         // Living Space
         StarterChoreTemplate(
             id: "living_surfaces",
-            title: "5-minute coffee table & couch reset",
+            title: "5-minute coffee table & couch tidy",
             iconSymbol: "sofa.fill",
             room: .living,
             intervalUnit: .days,
@@ -241,31 +290,41 @@ public enum StarterCatalog {
         StarterChoreTemplate(
             id: "living_dust",
             title: "Dust shelves, TV stand & sills",
-            iconSymbol: "wind",
+            iconSymbol: "sparkles",
             room: .living,
             intervalUnit: .days,
             intervalCount: 21,
             energyLevel: .steady,
             estimatedMinutes: 10
         ),
+        StarterChoreTemplate(
+            id: "living_desk_reset",
+            title: "Clear desk & wipe keyboard/screen",
+            iconSymbol: "desktopcomputer",
+            room: .living,
+            intervalUnit: .days,
+            intervalCount: 7,
+            energyLevel: .lowSpoons,
+            estimatedMinutes: 5
+        ),
 
         // Laundry & Linens
         StarterChoreTemplate(
             id: "laundry_wash",
-            title: "Run & dry a load of laundry",
+            title: "Wash & dry a load of laundry",
             iconSymbol: "washer.fill",
             room: .laundry,
             intervalUnit: .days,
             intervalCount: 5,
             energyLevel: .steady,
             estimatedMinutes: 10,
-            suggestedNagMinutes: 45,
+            suggestedNagMinutes: 60,
             suggestedTier: .stickyLiveActivity,
             recommendedByDefault: true
         ),
         StarterChoreTemplate(
             id: "laundry_put_away",
-            title: "Put away clean laundry basket",
+            title: "Fold & put away clean laundry",
             iconSymbol: "cabinet.fill",
             room: .laundry,
             intervalUnit: .days,
@@ -288,7 +347,7 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "pets_water_bowls",
-            title: "Wash & refill pet water fountain/bowls",
+            title: "Wash & refill pet water bowls",
             iconSymbol: "pawprint.fill",
             room: .petsAndPlants,
             intervalUnit: .days,
@@ -305,31 +364,41 @@ public enum StarterCatalog {
             intervalCount: 1,
             energyLevel: .lowSpoons,
             estimatedMinutes: 3,
-            suggestedNagMinutes: 30,
+            suggestedNagMinutes: 45,
             suggestedTier: .stickyLiveActivity
+        ),
+        StarterChoreTemplate(
+            id: "pets_brush",
+            title: "Brush pet coat / trim nails",
+            iconSymbol: "comb.fill",
+            room: .petsAndPlants,
+            intervalUnit: .days,
+            intervalCount: 10,
+            energyLevel: .steady,
+            estimatedMinutes: 10
         ),
 
         // Entry & Trash
         StarterChoreTemplate(
             id: "trash_kitchen_out",
-            title: "Take out kitchen trash & recycling",
+            title: "Take out trash & recycling",
             iconSymbol: "trash.fill",
             room: .entryAndTrash,
             intervalUnit: .days,
             intervalCount: 3,
             energyLevel: .lowSpoons,
             estimatedMinutes: 4,
-            suggestedNagMinutes: 45,
+            suggestedNagMinutes: 60,
             suggestedTier: .stickyLiveActivity,
             recommendedByDefault: true
         ),
         StarterChoreTemplate(
             id: "trash_curb_night",
-            title: "Roll bins to curb for pickup",
+            title: "Roll bins out for pickup",
             iconSymbol: "arrow.up.bin.fill",
             room: .entryAndTrash,
             scheduleMode: .fixedCalendar,
-            fixedWeekdays: [3], // Tuesday night default
+            fixedWeekdays: [3],
             energyLevel: .lowSpoons,
             estimatedMinutes: 4,
             suggestedNagMinutes: 30,
@@ -338,18 +407,60 @@ public enum StarterCatalog {
         ),
         StarterChoreTemplate(
             id: "entry_mail_sort",
-            title: "Toss junk mail & clear entry drop-zone",
+            title: "Sort mail & tidy entryway shoes",
             iconSymbol: "envelope.open.fill",
             room: .entryAndTrash,
             intervalUnit: .days,
             intervalCount: 4,
             energyLevel: .lowSpoons,
             estimatedMinutes: 3
+        ),
+
+        // Whole Home & Life Activities
+        StarterChoreTemplate(
+            id: "home_meds_refill",
+            title: "Refill weekly pill / vitamin organizer",
+            iconSymbol: "pills.fill",
+            room: .general,
+            intervalUnit: .days,
+            intervalCount: 7,
+            energyLevel: .lowSpoons,
+            estimatedMinutes: 4
+        ),
+        StarterChoreTemplate(
+            id: "home_bills_admin",
+            title: "Quick check on bills & deliveries",
+            iconSymbol: "creditcard.fill",
+            room: .general,
+            intervalUnit: .days,
+            intervalCount: 14,
+            energyLevel: .steady,
+            estimatedMinutes: 10
+        ),
+        StarterChoreTemplate(
+            id: "home_backpack_car",
+            title: "Clear out bag / car trash",
+            iconSymbol: "backpack.fill",
+            room: .general,
+            intervalUnit: .days,
+            intervalCount: 7,
+            energyLevel: .lowSpoons,
+            estimatedMinutes: 5
+        ),
+        StarterChoreTemplate(
+            id: "home_air_filter",
+            title: "Clean purifier / AC filter",
+            iconSymbol: "aqi.medium",
+            room: .general,
+            intervalUnit: .days,
+            intervalCount: 30,
+            energyLevel: .lowSpoons,
+            estimatedMinutes: 5
         )
     ]
 
     public static func templates(for room: RoomCategory) -> [StarterChoreTemplate] {
-        allTemplates.filter { $0.room == room }
+        combinedTemplates.filter { $0.room == room }
     }
 }
 
@@ -369,23 +480,18 @@ public enum StarterCatalogSeeder {
 
         switch seed {
         case .dueNow:
-            // Elapsed 100% of interval -> actionable right now
             return now.addingTimeInterval(-intervalSeconds)
         case .dueSoon:
-            // Elapsed ~78% of interval -> warming up in next day or two
             return now.addingTimeInterval(-intervalSeconds * 0.78)
         case .fresh:
-            // Just done recently (~10% elapsed)
             return now.addingTimeInterval(-intervalSeconds * 0.10)
         case .autoStagger:
-            // Cap immediate Day-1 due items at most 2 tasks; spread remaining tasks evenly between 15% and 82% elapsed!
             if indexInBatch < 2 {
                 return now.addingTimeInterval(-intervalSeconds)
             }
             let remainingCount = max(1, totalBatchCount - 2)
             let slotIndex = indexInBatch - 2
             let fraction = 0.15 + (0.67 * Double(slotIndex) / Double(remainingCount))
-            // For 1-day daily tasks that aren't in the first 2 due slots, mark done earlier today so they come due tomorrow
             if intervalDays <= 1.0 {
                 return calendar.startOfDay(for: now).addingTimeInterval(3600)
             }

@@ -1,6 +1,11 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
-// MARK: - Hex Color Extension
+// MARK: - Hex Color & Contrast Extensions
 
 public extension Color {
     init(hex: String) {
@@ -26,43 +31,87 @@ public extension Color {
             opacity: Double(a) / 255.0
         )
     }
+
+    func toHexString() -> String {
+        #if canImport(UIKit)
+        let uiColor = UIColor(self)
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        if uiColor.getRed(&r, green: &g, blue: &b, alpha: &a) {
+            return String(
+                format: "#%02X%02X%02X",
+                Int(round(max(0, min(1, r)) * 255)),
+                Int(round(max(0, min(1, g)) * 255)),
+                Int(round(max(0, min(1, b)) * 255))
+            )
+        }
+        #elseif canImport(AppKit)
+        if let srgb = NSColor(self).usingColorSpace(.sRGB) {
+            return String(
+                format: "#%02X%02X%02X",
+                Int(round(max(0, min(1, srgb.redComponent)) * 255)),
+                Int(round(max(0, min(1, srgb.greenComponent)) * 255)),
+                Int(round(max(0, min(1, srgb.blueComponent)) * 255))
+            )
+        }
+        #endif
+        return "#5E8C71"
+    }
+
+    static func relativeLuminance(ofHex hex: String) -> Double {
+        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&int)
+        let r = Double((int >> 16) & 0xFF) / 255.0
+        let g = Double((int >> 8) & 0xFF) / 255.0
+        let b = Double(int & 0xFF) / 255.0
+        func linear(_ c: Double) -> Double {
+            c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+    }
+
+    static func idealForeground(onHex hex: String) -> Color {
+        relativeLuminance(ofHex: hex) > 0.44 ? Color(hex: "#121317") : .white
+    }
 }
 
-// MARK: - Multi-Family Theme Token Palette (Originals + Omarchy Quattro OS 4.x)
+// MARK: - Multi-Family Theme Token Palette + User Color Customization
 
 public struct ADHOUSEDThemeTokens: Sendable {
-    public let preset: ThemePreset
-    public let isDark: Bool
+    public var preset: ThemePreset
+    public var isDark: Bool
 
-    public let canvasBackground: Color
-    public let canvasSecondary: Color
-    public let cardSurface: Color
-    public let cardElevatedSurface: Color
-    public let primaryInk: Color
-    public let secondaryInk: Color
-    public let borderInk: Color
-    public let hardShadowColor: Color
+    public var canvasBackground: Color
+    public var canvasSecondary: Color
+    public var cardSurface: Color
+    public var cardElevatedSurface: Color
+    public var primaryInk: Color
+    public var secondaryInk: Color
+    public var borderInk: Color
+    public var hardShadowColor: Color
 
-    public let accentPrimary: Color
-    public let accentSecondary: Color
-    public let onAccentPrimary: Color
-    public let onAccentSecondary: Color
+    public var accentPrimary: Color
+    public var accentSecondary: Color
+    public var onAccentPrimary: Color
+    public var onAccentSecondary: Color
 
-    public let freshColor: Color
-    public let warmingColor: Color
-    public let dueNowColor: Color
-    public let urgentColor: Color
+    public var freshColor: Color
+    public var warmingColor: Color
+    public var dueNowColor: Color
+    public var urgentColor: Color
 
-    public let cardCornerRadius: CGFloat
-    public let pillCornerRadius: CGFloat
-    public let cardBorderWidth: CGFloat
-    public let usesHardOffsetShadow: Bool
-    public let hardShadowOffset: CGFloat
+    public var cardCornerRadius: CGFloat
+    public var pillCornerRadius: CGFloat
+    public var cardBorderWidth: CGFloat
+    public var usesHardOffsetShadow: Bool
+    public var hardShadowOffset: CGFloat
 
-    /// Omarchy Quattro OS 4.x HUD tokens (JetBrains/SF Mono alias, 8px window geometry, 45° active focus borders)
-    public let isTerminalHUD: Bool
-    public let fontDesign: Font.Design
-    public let focusGradientColors: [Color]
+    public var isTerminalHUD: Bool
+    public var fontDesign: Font.Design
+    public var focusGradientColors: [Color]
 
     // MARK: Scheme Helpers
 
@@ -104,591 +153,617 @@ public struct ADHOUSEDThemeTokens: Sendable {
     }
 
     public func hudTag(_ label: String) -> String {
-        isTerminalHUD ? "[\(label)]" : label
+        label
     }
 
-    // MARK: Token Resolution
+    // MARK: Token Resolution (Base Preset + Per-Theme User Color Overrides)
 
-    public static func resolve(preset: ThemePreset, colorScheme: ColorScheme) -> ADHOUSEDThemeTokens {
-        let dark = (colorScheme == .dark)
-        switch (preset, dark) {
+    public static func resolve(
+        preset: ThemePreset,
+        colorScheme: ColorScheme,
+        overrides: ThemeColorOverrides? = nil
+    ) -> ADHOUSEDThemeTokens {
+        let effectiveOverrides = overrides ?? ADHOUSEDPreferences.shared.colorOverrides(for: preset)
+        var tokens = resolveBase(preset: preset, isDark: colorScheme == .dark)
+        tokens.apply(overrides: effectiveOverrides)
+        return tokens
+    }
 
-        // -----------------------------------------------------------------
-        // 1. WARM TACTILE BENTO (LIGHT & OLED DARK)
-        // -----------------------------------------------------------------
+    public mutating func apply(overrides: ThemeColorOverrides) {
+        if let hex = overrides.canvasBackgroundHex {
+            let customBg = Color(hex: hex)
+            canvasBackground = customBg
+            isDark = Color.relativeLuminance(ofHex: hex) < 0.35
+            canvasSecondary = customBg.opacity(0.88)
+        }
+        if let hex = overrides.cardSurfaceHex {
+            let customCard = Color(hex: hex)
+            cardSurface = customCard
+            cardElevatedSurface = customCard
+        }
+        if let hex = overrides.primaryInkHex {
+            let customInk = Color(hex: hex)
+            primaryInk = customInk
+            secondaryInk = customInk.opacity(0.68)
+        }
+        if let hex = overrides.accentPrimaryHex {
+            let customAccent = Color(hex: hex)
+            accentPrimary = customAccent
+            onAccentPrimary = Color.idealForeground(onHex: hex)
+            focusGradientColors = [customAccent, accentSecondary]
+        }
+        if let hex = overrides.accentSecondaryHex {
+            let customSec = Color(hex: hex)
+            accentSecondary = customSec
+            onAccentSecondary = Color.idealForeground(onHex: hex)
+            focusGradientColors = [accentPrimary, customSec]
+        }
+        if let hex = overrides.freshColorHex {
+            freshColor = Color(hex: hex)
+        }
+        if let hex = overrides.dueNowColorHex {
+            let customDue = Color(hex: hex)
+            dueNowColor = customDue
+            urgentColor = customDue
+        }
+
+        switch overrides.cornerStyle {
+        case .themeDefault:
+            break
+        case .sharpTerminal:
+            cardCornerRadius = 7
+            pillCornerRadius = 5
+        case .crispModern:
+            cardCornerRadius = 14
+            pillCornerRadius = 10
+        case .softRounded:
+            cardCornerRadius = 24
+            pillCornerRadius = 99
+        }
+
+        switch overrides.fontStyle {
+        case .themeDefault:
+            break
+        case .cleanSans:
+            fontDesign = .default
+        case .softRounded:
+            fontDesign = .rounded
+        case .monospaced:
+            fontDesign = .monospaced
+        }
+    }
+
+    private static func makeTokens(
+        preset: ThemePreset,
+        isDark: Bool,
+        bg: String,
+        bgSec: String,
+        card: String,
+        cardElev: String,
+        ink: String,
+        inkSec: String,
+        border: String,
+        accent1: String,
+        accent2: String,
+        fresh: String,
+        warm: String,
+        due: String,
+        urgent: String,
+        cardRadius: CGFloat,
+        pillRadius: CGFloat,
+        borderWidth: CGFloat = 1.0,
+        hardShadow: Bool = false,
+        terminalHUD: Bool = false,
+        font: Font.Design = .default,
+        focusGrad: [String]? = nil
+    ) -> ADHOUSEDThemeTokens {
+        let gradHexes = focusGrad ?? [accent1, accent2]
+        return ADHOUSEDThemeTokens(
+            preset: preset,
+            isDark: isDark,
+            canvasBackground: Color(hex: bg),
+            canvasSecondary: Color(hex: bgSec),
+            cardSurface: Color(hex: card),
+            cardElevatedSurface: Color(hex: cardElev),
+            primaryInk: Color(hex: ink),
+            secondaryInk: Color(hex: inkSec),
+            borderInk: Color(hex: border),
+            hardShadowColor: hardShadow
+                ? Color(hex: border)
+                : Color.black.opacity(isDark ? 0.32 : 0.05),
+            accentPrimary: Color(hex: accent1),
+            accentSecondary: Color(hex: accent2),
+            onAccentPrimary: Color.idealForeground(onHex: accent1),
+            onAccentSecondary: Color.idealForeground(onHex: accent2),
+            freshColor: Color(hex: fresh),
+            warmingColor: Color(hex: warm),
+            dueNowColor: Color(hex: due),
+            urgentColor: Color(hex: urgent),
+            cardCornerRadius: cardRadius,
+            pillCornerRadius: pillRadius,
+            cardBorderWidth: borderWidth,
+            usesHardOffsetShadow: hardShadow,
+            hardShadowOffset: hardShadow ? 3.5 : 0,
+            isTerminalHUD: terminalHUD,
+            fontDesign: font,
+            focusGradientColors: gradHexes.map { Color(hex: $0) }
+        )
+    }
+
+    // swiftlint:disable function_body_length
+    public static func resolveBase(preset: ThemePreset, isDark: Bool) -> ADHOUSEDThemeTokens {
+        switch (preset, isDark) {
+
+        // =================================================================
+        // FAMILY 1: QUIET & MINIMAL · LOW STIMULATION
+        // =================================================================
+
+        // 1. Quiet Sanctuary (Warm Linen Light / Velvet Charcoal Dark)
+        case (.quietSanctuary, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F5F3EE", bgSec: "#EAE6DD", card: "#FCFBF8", cardElev: "#FFFFFF",
+                ink: "#262522", inkSec: "#706C64", border: "#E2DDD2",
+                accent1: "#5B826B", accent2: "#82786A",
+                fresh: "#5B826B", warm: "#C2955A", due: "#B86E58", urgent: "#A85448",
+                cardRadius: 20, pillRadius: 12, borderWidth: 0.9, font: .rounded
+            )
+        case (.quietSanctuary, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#151618", bgSec: "#212327", card: "#1C1E22", cardElev: "#25282D",
+                ink: "#E6E4DF", inkSec: "#96938B", border: "#2E3138",
+                accent1: "#7DA88E", accent2: "#A39887",
+                fresh: "#7DA88E", warm: "#D1A96E", due: "#CE856E", urgent: "#C76B5E",
+                cardRadius: 20, pillRadius: 12, borderWidth: 0.9, font: .rounded
+            )
+
+        // 2. Japandi Stone & Moss
+        case (.japandiMoss, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#EDE9E1", bgSec: "#E1DBD0", card: "#F7F5F0", cardElev: "#FCFBF8",
+                ink: "#23211D", inkSec: "#6B655B", border: "#D5CEC0",
+                accent1: "#496951", accent2: "#8A6A4F",
+                fresh: "#496951", warm: "#B58742", due: "#B05D44", urgent: "#9E4238",
+                cardRadius: 16, pillRadius: 10, borderWidth: 1.0, font: .default
+            )
+        case (.japandiMoss, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#161715", bgSec: "#232521", card: "#1D1F1B", cardElev: "#272A24",
+                ink: "#E8E4DA", inkSec: "#9E998D", border: "#32352E",
+                accent1: "#82A888", accent2: "#B89576",
+                fresh: "#82A888", warm: "#CFA463", due: "#CE7B61", urgent: "#C46054",
+                cardRadius: 16, pillRadius: 10, borderWidth: 1.0, font: .default
+            )
+
+        // 3. Nordic Daylight
+        case (.nordicDaylight, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F2F5F8", bgSec: "#E4EAF0", card: "#FFFFFF", cardElev: "#F9FBFD",
+                ink: "#1B2430", inkSec: "#5E6D7E", border: "#D7E0EA",
+                accent1: "#446E96", accent2: "#4B8F7C",
+                fresh: "#4B8F7C", warm: "#C28D38", due: "#C4624D", urgent: "#B54444",
+                cardRadius: 18, pillRadius: 12, borderWidth: 1.0, font: .default
+            )
+        case (.nordicDaylight, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#12171E", bgSec: "#1D2530", card: "#181F28", cardElev: "#212A36",
+                ink: "#E8EEF5", inkSec: "#91A0B2", border: "#2A3544",
+                accent1: "#74A4D1", accent2: "#6EB8A3",
+                fresh: "#6EB8A3", warm: "#DEB062", due: "#DF806A", urgent: "#D66565",
+                cardRadius: 18, pillRadius: 12, borderWidth: 1.0, font: .default
+            )
+
+        // =================================================================
+        // FAMILY 2: MODERN ADHD FOCUS · CALM & COZY
+        // =================================================================
+
+        // 4. Matcha & Oat
+        case (.matchaOat, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F6F4EC", bgSec: "#EAE6D7", card: "#FFFDF8", cardElev: "#FFFFFF",
+                ink: "#22291F", inkSec: "#646E5F", border: "#DCE0D1",
+                accent1: "#5B9456", accent2: "#D97E6A",
+                fresh: "#5B9456", warm: "#D69E3A", due: "#D96D55", urgent: "#C74B4B",
+                cardRadius: 22, pillRadius: 14, borderWidth: 1.0, font: .rounded
+            )
+        case (.matchaOat, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#131813", bgSec: "#1F271F", card: "#192019", cardElev: "#232C23",
+                ink: "#ECF2E8", inkSec: "#99A894", border: "#2D382D",
+                accent1: "#85C27E", accent2: "#EB9683",
+                fresh: "#85C27E", warm: "#E8B758", due: "#EB826A", urgent: "#E06363",
+                cardRadius: 22, pillRadius: 14, borderWidth: 1.0, font: .rounded
+            )
+
+        // 5. Cozy Lo-Fi Dusk
+        case (.lofiDusk, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#181622", bgSec: "#262235", card: "#201D2D", cardElev: "#2A263B",
+                ink: "#EFEBF9", inkSec: "#A59EC0", border: "#36314C",
+                accent1: "#A58DF5", accent2: "#F29D7E",
+                fresh: "#76C8A5", warm: "#EFC070", due: "#F28B7D", urgent: "#EB6A7E",
+                cardRadius: 22, pillRadius: 14, borderWidth: 1.0, font: .rounded,
+                focusGrad: ["#A58DF5", "#F29D7E"]
+            )
+        case (.lofiDusk, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F4F1FA", bgSec: "#E7E1F4", card: "#FFFFFF", cardElev: "#FCFaff",
+                ink: "#241E38", inkSec: "#685E85", border: "#DAD1EE",
+                accent1: "#6F52D9", accent2: "#D96F4E",
+                fresh: "#3E9674", warm: "#C98A2C", due: "#D65B4B", urgent: "#C43C54",
+                cardRadius: 22, pillRadius: 14, borderWidth: 1.0, font: .rounded,
+                focusGrad: ["#6F52D9", "#D96F4E"]
+            )
+
+        // 6. Oceanic Deep Teal
+        case (.oceanicFocus, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#0E181E", bgSec: "#182832", card: "#132129", cardElev: "#1B2E39",
+                ink: "#E6F4F7", inkSec: "#8FB0BA", border: "#243B47",
+                accent1: "#3BB8B0", accent2: "#63A4E8",
+                fresh: "#4CC998", warm: "#E9C46A", due: "#F07F67", urgent: "#E76F51",
+                cardRadius: 20, pillRadius: 13, borderWidth: 1.0, font: .default,
+                focusGrad: ["#3BB8B0", "#63A4E8"]
+            )
+        case (.oceanicFocus, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#EDF5F7", bgSec: "#DCEBF0", card: "#FFFFFF", cardElev: "#F7FBFC",
+                ink: "#12262E", inkSec: "#506E7A", border: "#CBE0E6",
+                accent1: "#1D8480", accent2: "#2E6EB0",
+                fresh: "#248C66", warm: "#C48A25", due: "#D45C42", urgent: "#C24038",
+                cardRadius: 20, pillRadius: 13, borderWidth: 1.0, font: .default,
+                focusGrad: ["#1D8480", "#2E6EB0"]
+            )
+
+        // 7. Warm Linen Bento
         case (.warmTactileBento, false):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#F7F2EA"),
-                canvasSecondary: Color(hex: "#EFE7DB"),
-                cardSurface: Color(hex: "#FFFFFF"),
-                cardElevatedSurface: Color(hex: "#FBF8F3"),
-                primaryInk: Color(hex: "#201B17"),
-                secondaryInk: Color(hex: "#6D635B"),
-                borderInk: Color(hex: "#E6DDD0"),
-                hardShadowColor: Color.black.opacity(0.07),
-                accentPrimary: Color(hex: "#3E9B6C"),
-                accentSecondary: Color(hex: "#D97736"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#3E9B6C"),
-                warmingColor: Color(hex: "#E0942C"),
-                dueNowColor: Color(hex: "#DC5B3E"),
-                urgentColor: Color(hex: "#C93B3B"),
-                cardCornerRadius: 24,
-                pillCornerRadius: 14,
-                cardBorderWidth: 1.0,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: false,
-                fontDesign: .default,
-                focusGradientColors: [Color(hex: "#3E9B6C"), Color(hex: "#D97736")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F7F2EA", bgSec: "#EFE7DB", card: "#FFFFFF", cardElev: "#FBF8F3",
+                ink: "#201B17", inkSec: "#6D635B", border: "#E6DDD0",
+                accent1: "#3E9B6C", accent2: "#D97736",
+                fresh: "#3E9B6C", warm: "#E0942C", due: "#DC5B3E", urgent: "#C93B3B",
+                cardRadius: 22, pillRadius: 14, borderWidth: 1.0
             )
-
         case (.warmTactileBento, true):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#0C0A09"),
-                canvasSecondary: Color(hex: "#151210"),
-                cardSurface: Color(hex: "#1C1815"),
-                cardElevatedSurface: Color(hex: "#26211D"),
-                primaryInk: Color(hex: "#F6EFE7"),
-                secondaryInk: Color(hex: "#A89E93"),
-                borderInk: Color(hex: "#302924"),
-                hardShadowColor: Color.black.opacity(0.45),
-                accentPrimary: Color(hex: "#52C488"),
-                accentSecondary: Color(hex: "#F09A48"),
-                onAccentPrimary: Color(hex: "#0C0A09"),
-                onAccentSecondary: Color(hex: "#0C0A09"),
-                freshColor: Color(hex: "#52C488"),
-                warmingColor: Color(hex: "#F5AE3D"),
-                dueNowColor: Color(hex: "#F06A4D"),
-                urgentColor: Color(hex: "#F25252"),
-                cardCornerRadius: 24,
-                pillCornerRadius: 14,
-                cardBorderWidth: 1.0,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: false,
-                fontDesign: .default,
-                focusGradientColors: [Color(hex: "#52C488"), Color(hex: "#F09A48")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#0F0D0C", bgSec: "#1B1715", card: "#181512", cardElev: "#221E1A",
+                ink: "#F6EFE7", inkSec: "#A89E93", border: "#302924",
+                accent1: "#52C488", accent2: "#F09A48",
+                fresh: "#52C488", warm: "#F5AE3D", due: "#F06A4D", urgent: "#F25252",
+                cardRadius: 22, pillRadius: 14, borderWidth: 1.0
             )
 
-        // -----------------------------------------------------------------
-        // 2. CHUNKY NEO-BRUTALIST POP (LIGHT & DARK)
-        // -----------------------------------------------------------------
+        // 8. Tactile Studio Pop (Refined Neo-Brutalist)
         case (.chunkyNeoBrutalistPop, false):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#FFFDF5"),
-                canvasSecondary: Color(hex: "#F4F0E1"),
-                cardSurface: Color(hex: "#FFFFFF"),
-                cardElevatedSurface: Color(hex: "#FFF8D6"),
-                primaryInk: Color(hex: "#111216"),
-                secondaryInk: Color(hex: "#454752"),
-                borderInk: Color(hex: "#111216"),
-                hardShadowColor: Color(hex: "#111216"),
-                accentPrimary: Color(hex: "#00C97E"),
-                accentSecondary: Color(hex: "#3B66FF"),
-                onAccentPrimary: Color(hex: "#111216"),
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#00C97E"),
-                warmingColor: Color(hex: "#FFB800"),
-                dueNowColor: Color(hex: "#FF5A36"),
-                urgentColor: Color(hex: "#FF3355"),
-                cardCornerRadius: 16,
-                pillCornerRadius: 10,
-                cardBorderWidth: 2.5,
-                usesHardOffsetShadow: true,
-                hardShadowOffset: 4.0,
-                isTerminalHUD: false,
-                fontDesign: .default,
-                focusGradientColors: [Color(hex: "#111216"), Color(hex: "#111216")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#FAF8F2", bgSec: "#EEEAE0", card: "#FFFFFF", cardElev: "#FFFDF7",
+                ink: "#14151A", inkSec: "#4E515E", border: "#14151A",
+                accent1: "#2563EB", accent2: "#10B981",
+                fresh: "#10B981", warm: "#F59E0B", due: "#F97316", urgent: "#EF4444",
+                cardRadius: 15, pillRadius: 10, borderWidth: 2.0, hardShadow: true,
+                focusGrad: ["#14151A", "#14151A"]
             )
-
         case (.chunkyNeoBrutalistPop, true):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#101117"),
-                canvasSecondary: Color(hex: "#181A24"),
-                cardSurface: Color(hex: "#1E202B"),
-                cardElevatedSurface: Color(hex: "#272A38"),
-                primaryInk: Color(hex: "#F8F7F2"),
-                secondaryInk: Color(hex: "#B0B3C2"),
-                borderInk: Color(hex: "#F0EFE9"),
-                hardShadowColor: Color(hex: "#000000"),
-                accentPrimary: Color(hex: "#00E594"),
-                accentSecondary: Color(hex: "#6688FF"),
-                onAccentPrimary: Color(hex: "#111216"),
-                onAccentSecondary: Color(hex: "#111216"),
-                freshColor: Color(hex: "#00E594"),
-                warmingColor: Color(hex: "#FFD000"),
-                dueNowColor: Color(hex: "#FF6B4A"),
-                urgentColor: Color(hex: "#FF4769"),
-                cardCornerRadius: 16,
-                pillCornerRadius: 10,
-                cardBorderWidth: 2.2,
-                usesHardOffsetShadow: true,
-                hardShadowOffset: 4.0,
-                isTerminalHUD: false,
-                fontDesign: .default,
-                focusGradientColors: [Color(hex: "#F0EFE9"), Color(hex: "#F0EFE9")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#111319", bgSec: "#1B1E28", card: "#181B24", cardElev: "#222633",
+                ink: "#F6F7FB", inkSec: "#A6ACBE", border: "#E2E6F0",
+                accent1: "#60A5FA", accent2: "#34D399",
+                fresh: "#34D399", warm: "#FBBF24", due: "#FB923C", urgent: "#F87171",
+                cardRadius: 15, pillRadius: 10, borderWidth: 1.8, hardShadow: true,
+                focusGrad: ["#E2E6F0", "#E2E6F0"]
             )
 
-        // -----------------------------------------------------------------
-        // 3. OMARCHY QUATTRO (Reference Tokyo-Night Dark & Quattro Light)
-        // -----------------------------------------------------------------
+        // =================================================================
+        // FAMILY 3: OMARCHY · SIGNATURE HYPRLAND DESKTOPS
+        // =================================================================
+
+        // 9. Omarchy Tokyo Night (Quattro)
         case (.omarchyQuattro, true):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#13141C"),
-                canvasSecondary: Color(hex: "#24283B"),
-                cardSurface: Color(hex: "#1A1B26"),
-                cardElevatedSurface: Color(hex: "#292E42"),
-                primaryInk: Color(hex: "#C0CAF5"),
-                secondaryInk: Color(hex: "#9AA5CE"),
-                borderInk: Color(hex: "#414868"),
-                hardShadowColor: Color.black.opacity(0.35),
-                accentPrimary: Color(hex: "#7AA2F7"),
-                accentSecondary: Color(hex: "#BB9AF7"),
-                onAccentPrimary: Color(hex: "#13141C"),
-                onAccentSecondary: Color(hex: "#13141C"),
-                freshColor: Color(hex: "#9ECE6A"),
-                warmingColor: Color(hex: "#E0AF68"),
-                dueNowColor: Color(hex: "#FF9E64"),
-                urgentColor: Color(hex: "#F7768E"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#7DCFFF"), Color(hex: "#7AA2F7"), Color(hex: "#BB9AF7")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#16161E", bgSec: "#24283B", card: "#1A1B26", cardElev: "#24283B",
+                ink: "#C0CAF5", inkSec: "#9AA5CE", border: "#3B4261",
+                accent1: "#7AA2F7", accent2: "#BB9AF7",
+                fresh: "#9ECE6A", warm: "#E0AF68", due: "#FF9E64", urgent: "#F7768E",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#7DCFFF", "#7AA2F7", "#BB9AF7"]
             )
-
         case (.omarchyQuattro, false):
-            // "4. QUATTRO LIGHT" from Showcase Sheet
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#EAEEF5"),
-                canvasSecondary: Color(hex: "#DCE3EE"),
-                cardSurface: Color(hex: "#F8FAFD"),
-                cardElevatedSurface: Color(hex: "#FFFFFF"),
-                primaryInk: Color(hex: "#1A1F2E"),
-                secondaryInk: Color(hex: "#535E78"),
-                borderInk: Color(hex: "#BDC8DC"),
-                hardShadowColor: Color.black.opacity(0.06),
-                accentPrimary: Color(hex: "#3B66D4"),
-                accentSecondary: Color(hex: "#7C4DFF"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#3C8A4B"),
-                warmingColor: Color(hex: "#C77D1A"),
-                dueNowColor: Color(hex: "#D65A28"),
-                urgentColor: Color(hex: "#D1345B"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#2E8BC0"), Color(hex: "#3B66D4"), Color(hex: "#7C4DFF")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#E1E2E7", bgSec: "#D5D6DB", card: "#EFEFF4", cardElev: "#F8F8FC",
+                ink: "#343B58", inkSec: "#565F89", border: "#B9BDCB",
+                accent1: "#2E7DE9", accent2: "#7847BD",
+                fresh: "#587539", warm: "#8C6C3E", due: "#B15C00", urgent: "#F52A65",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#007197", "#2E7DE9", "#7847BD"]
             )
 
-        // -----------------------------------------------------------------
-        // 4. OMARCHY EVERFOREST (Woodland Dark & Botanical Sage Light)
-        // -----------------------------------------------------------------
+        // 10. Omarchy Catppuccin (Mocha Dark / Latte Light)
+        case (.omarchyCatppuccin, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#181825", bgSec: "#313244", card: "#1E1E2E", cardElev: "#28283D",
+                ink: "#CDD6F4", inkSec: "#A6ADC8", border: "#45475A",
+                accent1: "#CBA6F7", accent2: "#89B4FA",
+                fresh: "#A6E3A1", warm: "#F9E2AF", due: "#FAB387", urgent: "#F38BA8",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#89DCEB", "#CBA6F7", "#F5C2E7"]
+            )
+        case (.omarchyCatppuccin, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#E6E9EF", bgSec: "#DCE0E8", card: "#EFF1F5", cardElev: "#F8F9FC",
+                ink: "#4C4F69", inkSec: "#6C6F85", border: "#BCC0CC",
+                accent1: "#8839EF", accent2: "#1E66F5",
+                fresh: "#40A02B", warm: "#DF8E1D", due: "#FE640B", urgent: "#D20F39",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#1E66F5", "#8839EF", "#EA76CB"]
+            )
+
+        // 11. Omarchy Kanagawa (Wave Dark / Lotus Light)
+        case (.omarchyKanagawa, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#16161D", bgSec: "#2A2A37", card: "#1F1F28", cardElev: "#2A2A37",
+                ink: "#DCD7BA", inkSec: "#A6A69C", border: "#363646",
+                accent1: "#7E9CD8", accent2: "#957FB8",
+                fresh: "#98BB6C", warm: "#E6C384", due: "#FFA066", urgent: "#E46876",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#7FB4CA", "#7E9CD8", "#D27E99"]
+            )
+        case (.omarchyKanagawa, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F2ECBC", bgSec: "#E5DDB0", card: "#F9F5D7", cardElev: "#FFFDF0",
+                ink: "#43436C", inkSec: "#6F6F94", border: "#C9C199",
+                accent1: "#4D699B", accent2: "#624C83",
+                fresh: "#6F894E", warm: "#CC6D00", due: "#E98A00", urgent: "#C84053",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#4D699B", "#624C83", "#B35B79"]
+            )
+
+        // 12. Omarchy Rosé Pine (Soho Pine Dark / Dawn Light)
+        case (.omarchyRosePine, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#191724", bgSec: "#26233A", card: "#1F1D2E", cardElev: "#2A273F",
+                ink: "#E0DEF4", inkSec: "#908CAA", border: "#403D52",
+                accent1: "#C4A7E7", accent2: "#EBBCBA",
+                fresh: "#9CCFD8", warm: "#F6C177", due: "#EA9A97", urgent: "#EB6F92",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#9CCFD8", "#C4A7E7", "#EBBCBA"]
+            )
+        case (.omarchyRosePine, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#FAF4ED", bgSec: "#F2E9E1", card: "#FFFAF3", cardElev: "#FFFFFF",
+                ink: "#575279", inkSec: "#797593", border: "#DFDAD9",
+                accent1: "#907AA9", accent2: "#D7827E",
+                fresh: "#286983", warm: "#EA9D34", due: "#D7827E", urgent: "#B4637A",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#56949F", "#907AA9", "#D7827E"]
+            )
+
+        // 13. Omarchy Nord Frost
+        case (.omarchyNord, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#242933", bgSec: "#3B4252", card: "#2E3440", cardElev: "#3B4252",
+                ink: "#ECEFF4", inkSec: "#D8DEE9", border: "#4C566A",
+                accent1: "#88C0D0", accent2: "#81A1C1",
+                fresh: "#A3BE8C", warm: "#EBCB8B", due: "#D08770", urgent: "#BF616A",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#8FBCBB", "#88C0D0", "#81A1C1"]
+            )
+        case (.omarchyNord, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#E5E9F0", bgSec: "#D8DEE9", card: "#ECEFF4", cardElev: "#F8FAFC",
+                ink: "#2E3440", inkSec: "#4C566A", border: "#C2CAD8",
+                accent1: "#5E81AC", accent2: "#4C7397",
+                fresh: "#4F7A42", warm: "#B88728", due: "#BF6040", urgent: "#A83B46",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#5E81AC", "#88C0D0"]
+            )
+
+        // 14. Omarchy Matte Black (Ghostty OLED)
+        case (.omarchyMatteBlack, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#0B0B0D", bgSec: "#1C1C21", card: "#131316", cardElev: "#1B1B20",
+                ink: "#F4F4F5", inkSec: "#A1A1AA", border: "#27272A",
+                accent1: "#34D399", accent2: "#38BDF8",
+                fresh: "#34D399", warm: "#FBBF24", due: "#FB923C", urgent: "#F87171",
+                cardRadius: 8, pillRadius: 6, borderWidth: 1.1, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#34D399", "#38BDF8"]
+            )
+        case (.omarchyMatteBlack, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F4F4F5", bgSec: "#E4E4E7", card: "#FFFFFF", cardElev: "#FAFAFA",
+                ink: "#09090B", inkSec: "#52525B", border: "#D4D4D8",
+                accent1: "#18181B", accent2: "#059669",
+                fresh: "#059669", warm: "#D97706", due: "#EA580C", urgent: "#DC2626",
+                cardRadius: 8, pillRadius: 6, borderWidth: 1.1, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#18181B", "#059669"]
+            )
+
+        // 15. Omarchy Everforest
         case (.omarchyEverforest, true):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#181C1E"),
-                canvasSecondary: Color(hex: "#2D353B"),
-                cardSurface: Color(hex: "#21272B"),
-                cardElevatedSurface: Color(hex: "#2B3338"),
-                primaryInk: Color(hex: "#D3C6AA"),
-                secondaryInk: Color(hex: "#9DA9A0"),
-                borderInk: Color(hex: "#475258"),
-                hardShadowColor: Color.black.opacity(0.35),
-                accentPrimary: Color(hex: "#A7C080"),
-                accentSecondary: Color(hex: "#83C092"),
-                onAccentPrimary: Color(hex: "#181C1E"),
-                onAccentSecondary: Color(hex: "#181C1E"),
-                freshColor: Color(hex: "#A7C080"),
-                warmingColor: Color(hex: "#DBBC7F"),
-                dueNowColor: Color(hex: "#E69875"),
-                urgentColor: Color(hex: "#E67E80"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#A7C080"), Color(hex: "#83C092"), Color(hex: "#7FBBB3")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#1E2326", bgSec: "#2E383C", card: "#272E33", cardElev: "#323C41",
+                ink: "#D3C6AA", inkSec: "#9DA9A0", border: "#414B50",
+                accent1: "#A7C080", accent2: "#83C092",
+                fresh: "#A7C080", warm: "#DBBC7F", due: "#E69875", urgent: "#E67E80",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#A7C080", "#83C092", "#7FBBB3"]
             )
-
         case (.omarchyEverforest, false):
-            // "2. EVERFOREST" Botanical Sage Mist from Showcase Sheet
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#E2ECDC"),
-                canvasSecondary: Color(hex: "#D2E0CA"),
-                cardSurface: Color(hex: "#F1F7ED"),
-                cardElevatedSurface: Color(hex: "#FAFDF8"),
-                primaryInk: Color(hex: "#243523"),
-                secondaryInk: Color(hex: "#4F664D"),
-                borderInk: Color(hex: "#AEC4A6"),
-                hardShadowColor: Color.black.opacity(0.06),
-                accentPrimary: Color(hex: "#467840"),
-                accentSecondary: Color(hex: "#357266"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#467840"),
-                warmingColor: Color(hex: "#B87E1B"),
-                dueNowColor: Color(hex: "#C95E2B"),
-                urgentColor: Color(hex: "#C23B3B"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#6BA35D"), Color(hex: "#467840"), Color(hex: "#357266")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F3EAD3", bgSec: "#E5DFC5", card: "#FDF6E3", cardElev: "#FFFBEF",
+                ink: "#5C6A72", inkSec: "#829181", border: "#D3C6AA",
+                accent1: "#8DA101", accent2: "#35A77C",
+                fresh: "#8DA101", warm: "#DFA000", due: "#F57D26", urgent: "#F85552",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#8DA101", "#35A77C"]
             )
 
-        // -----------------------------------------------------------------
-        // 5. OMARCHY CYBERPUNK (Synthwave Void Dark & Cyber Vapor Light)
-        // -----------------------------------------------------------------
+        // =================================================================
+        // FAMILY 4: OMARCHY · RETRO, CYBER & TONAL
+        // =================================================================
+
+        // 16. Omarchy Gruvbox Material
+        case (.omarchyGruvbox, true):
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#1D2021", bgSec: "#32302F", card: "#282828", cardElev: "#32302F",
+                ink: "#D4BE98", inkSec: "#A89984", border: "#45403D",
+                accent1: "#D8A657", accent2: "#7DAEA3",
+                fresh: "#A9B665", warm: "#D8A657", due: "#E78A4E", urgent: "#EA6962",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#A9B665", "#D8A657", "#E78A4E"]
+            )
+        case (.omarchyGruvbox, false):
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F2E5BC", bgSec: "#E5D5AD", card: "#F9F5D7", cardElev: "#FFFBEF",
+                ink: "#3C3836", inkSec: "#665C54", border: "#D5C4A1",
+                accent1: "#B57614", accent2: "#427B58",
+                fresh: "#689D6A", warm: "#B57614", due: "#AF3A03", urgent: "#9D0006",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#689D6A", "#B57614", "#AF3A03"]
+            )
+
+        // 17. Omarchy Cyberpunk
         case (.omarchyCyberpunk, true):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#13141C"),
-                canvasSecondary: Color(hex: "#231D38"),
-                cardSurface: Color(hex: "#191628"),
-                cardElevatedSurface: Color(hex: "#272040"),
-                primaryInk: Color(hex: "#F4ECFF"),
-                secondaryInk: Color(hex: "#B4A5D6"),
-                borderInk: Color(hex: "#553C8B"),
-                hardShadowColor: Color.black.opacity(0.45),
-                accentPrimary: Color(hex: "#3BF4FB"),
-                accentSecondary: Color(hex: "#FF5EE2"),
-                onAccentPrimary: Color(hex: "#13141C"),
-                onAccentSecondary: Color(hex: "#13141C"),
-                freshColor: Color(hex: "#00F5A0"),
-                warmingColor: Color(hex: "#FFE64D"),
-                dueNowColor: Color(hex: "#FF5EE2"),
-                urgentColor: Color(hex: "#FF3366"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.35,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#3BF4FB"), Color(hex: "#8B5CF6"), Color(hex: "#FF5EE2")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#12111C", bgSec: "#231E38", card: "#191628", cardElev: "#26203E",
+                ink: "#F4ECFF", inkSec: "#B4A5D6", border: "#4E387E",
+                accent1: "#3BF4FB", accent2: "#FF5EE2",
+                fresh: "#00F5A0", warm: "#FFE64D", due: "#FF5EE2", urgent: "#FF3366",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.3, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#3BF4FB", "#8B5CF6", "#FF5EE2"]
             )
-
         case (.omarchyCyberpunk, false):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#F2ECF9"),
-                canvasSecondary: Color(hex: "#E4D8F3"),
-                cardSurface: Color(hex: "#FCF9FF"),
-                cardElevatedSurface: Color(hex: "#FFFFFF"),
-                primaryInk: Color(hex: "#1D1130"),
-                secondaryInk: Color(hex: "#644D87"),
-                borderInk: Color(hex: "#C5ADE6"),
-                hardShadowColor: Color.black.opacity(0.07),
-                accentPrimary: Color(hex: "#D6189A"),
-                accentSecondary: Color(hex: "#008CA8"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#00996B"),
-                warmingColor: Color(hex: "#C98A00"),
-                dueNowColor: Color(hex: "#D6189A"),
-                urgentColor: Color(hex: "#E01E4F"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.35,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#00A8C6"), Color(hex: "#8B5CF6"), Color(hex: "#D6189A")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F2ECF9", bgSec: "#E4D8F3", card: "#FCF9FF", cardElev: "#FFFFFF",
+                ink: "#1D1130", inkSec: "#644D87", border: "#C5ADE6",
+                accent1: "#D6189A", accent2: "#008CA8",
+                fresh: "#00996B", warm: "#C98A00", due: "#D6189A", urgent: "#E01E4F",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.3, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#00A8C6", "#8B5CF6", "#D6189A"]
             )
 
-        // -----------------------------------------------------------------
-        // 6. QUATTRO MINIMAL & MIST (Zero-Saturation Slate Dark & Mist Light)
-        // -----------------------------------------------------------------
+        // 18. Omarchy Mono Slate (Quattro Minimal)
         case (.quattroMinimal, true):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#13141C"),
-                canvasSecondary: Color(hex: "#232733"),
-                cardSurface: Color(hex: "#1A1D26"),
-                cardElevatedSurface: Color(hex: "#262B38"),
-                primaryInk: Color(hex: "#E8EDF3"),
-                secondaryInk: Color(hex: "#949FB0"),
-                borderInk: Color(hex: "#384050"),
-                hardShadowColor: Color.black.opacity(0.35),
-                accentPrimary: Color(hex: "#B4C7DC"),
-                accentSecondary: Color(hex: "#8497AD"),
-                onAccentPrimary: Color(hex: "#13141C"),
-                onAccentSecondary: Color(hex: "#13141C"),
-                freshColor: Color(hex: "#A6C2B5"),
-                warmingColor: Color(hex: "#C9BE9F"),
-                dueNowColor: Color(hex: "#C4D4E6"),
-                urgentColor: Color(hex: "#D69E9E"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                // Sheet 1 Rule 2: Solid Accent Focus Rings
-                focusGradientColors: [Color(hex: "#B4C7DC"), Color(hex: "#B4C7DC")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#13141C", bgSec: "#232733", card: "#1A1D26", cardElev: "#262B38",
+                ink: "#E8EDF3", inkSec: "#949FB0", border: "#384050",
+                accent1: "#B4C7DC", accent2: "#8497AD",
+                fresh: "#A6C2B5", warm: "#C9BE9F", due: "#C4D4E6", urgent: "#D69E9E",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#B4C7DC", "#B4C7DC"]
             )
-
         case (.quattroMinimal, false):
-            // "4. QUATTRO MIST" from Sheet 1
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#DCE4EC"),
-                canvasSecondary: Color(hex: "#CBD6E1"),
-                cardSurface: Color(hex: "#EEF3F8"),
-                cardElevatedSurface: Color(hex: "#F8FAFC"),
-                primaryInk: Color(hex: "#1A222C"),
-                secondaryInk: Color(hex: "#505F70"),
-                borderInk: Color(hex: "#ACBCCB"),
-                hardShadowColor: Color.black.opacity(0.06),
-                accentPrimary: Color(hex: "#415468"),
-                accentSecondary: Color(hex: "#5B7087"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#3E6B5C"),
-                warmingColor: Color(hex: "#856D38"),
-                dueNowColor: Color(hex: "#2F455C"),
-                urgentColor: Color(hex: "#963E44"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#415468"), Color(hex: "#415468")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#DCE4EC", bgSec: "#CBD6E1", card: "#EEF3F8", cardElev: "#F8FAFC",
+                ink: "#1A222C", inkSec: "#505F70", border: "#ACBCCB",
+                accent1: "#415468", accent2: "#5B7087",
+                fresh: "#3E6B5C", warm: "#856D38", due: "#2F455C", urgent: "#963E44",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#415468", "#415468"]
             )
 
-        // -----------------------------------------------------------------
-        // 7. QUATTRO ASH & DESERT SUN (Warm Stone Dark & Desert Sand Light)
-        // -----------------------------------------------------------------
+        // 19. Omarchy Mineral Ash
         case (.quattroAsh, true):
-            // "3. QUATTRO ASH" from Sheet 1
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#13141C"),
-                canvasSecondary: Color(hex: "#27262D"),
-                cardSurface: Color(hex: "#1C1C22"),
-                cardElevatedSurface: Color(hex: "#2B2A31"),
-                primaryInk: Color(hex: "#ECE6DA"),
-                secondaryInk: Color(hex: "#A59E92"),
-                borderInk: Color(hex: "#403E46"),
-                hardShadowColor: Color.black.opacity(0.35),
-                accentPrimary: Color(hex: "#DBD1C0"),
-                accentSecondary: Color(hex: "#AE9F8C"),
-                onAccentPrimary: Color(hex: "#141418"),
-                onAccentSecondary: Color(hex: "#141418"),
-                freshColor: Color(hex: "#B5C4A7"),
-                warmingColor: Color(hex: "#DEC99A"),
-                dueNowColor: Color(hex: "#E6DAC6"),
-                urgentColor: Color(hex: "#DE9B8E"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#E6DEC8"), Color(hex: "#BEB3A0")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#151519", bgSec: "#27262D", card: "#1D1D23", cardElev: "#2B2A31",
+                ink: "#ECE6DA", inkSec: "#A59E92", border: "#403E46",
+                accent1: "#DBD1C0", accent2: "#AE9F8C",
+                fresh: "#B5C4A7", warm: "#DEC99A", due: "#E6DAC6", urgent: "#DE9B8E",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#E6DEC8", "#BEB3A0"]
             )
-
         case (.quattroAsh, false):
-            // "3. DESERT SUN" from Sheet 2
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#E5DAC0"),
-                canvasSecondary: Color(hex: "#D6C7A5"),
-                cardSurface: Color(hex: "#F4EDDE"),
-                cardElevatedSurface: Color(hex: "#FBF8F0"),
-                primaryInk: Color(hex: "#262014"),
-                secondaryInk: Color(hex: "#63563E"),
-                borderInk: Color(hex: "#BFA97E"),
-                hardShadowColor: Color.black.opacity(0.06),
-                accentPrimary: Color(hex: "#7D6024"),
-                accentSecondary: Color(hex: "#997834"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#526E3C"),
-                warmingColor: Color(hex: "#A87719"),
-                dueNowColor: Color(hex: "#9E531B"),
-                urgentColor: Color(hex: "#A8362B"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.25,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#9E7B2F"), Color(hex: "#694F1A")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#E8E1D1", bgSec: "#DBD1BC", card: "#F5F0E4", cardElev: "#FCF9F2",
+                ink: "#262014", inkSec: "#63563E", border: "#C8B899",
+                accent1: "#6E582C", accent2: "#8C723D",
+                fresh: "#526E3C", warm: "#A87719", due: "#9E531B", urgent: "#A8362B",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.2, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#8C723D", "#6E582C"]
             )
 
-        // -----------------------------------------------------------------
-        // 8. OMARCHY AMBER WAVE & SUNFLOWER (Sheet 2 Cols 1 & 4)
-        // -----------------------------------------------------------------
+        // 20. Omarchy Amber Phosphor
         case (.omarchyAmber, true):
-            // "1. AMBER WAVE" from Sheet 2
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#13141C"),
-                canvasSecondary: Color(hex: "#27231C"),
-                cardSurface: Color(hex: "#1B1918"),
-                cardElevatedSurface: Color(hex: "#2A241B"),
-                primaryInk: Color(hex: "#F7EEDB"),
-                secondaryInk: Color(hex: "#B5A282"),
-                borderInk: Color(hex: "#524124"),
-                hardShadowColor: Color.black.opacity(0.40),
-                accentPrimary: Color(hex: "#E5A93C"),
-                accentSecondary: Color(hex: "#FA8963"),
-                onAccentPrimary: Color(hex: "#171208"),
-                onAccentSecondary: Color(hex: "#171208"),
-                freshColor: Color(hex: "#C5D457"),
-                warmingColor: Color(hex: "#FAEE68"),
-                dueNowColor: Color(hex: "#FAAE59"),
-                urgentColor: Color(hex: "#FE5228"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.3,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#FAEE68"), Color(hex: "#E5A93C"), Color(hex: "#FE6828")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#131210", bgSec: "#262118", card: "#1B1814", cardElev: "#29231B",
+                ink: "#F7EEDB", inkSec: "#B5A282", border: "#4A3A21",
+                accent1: "#E5A93C", accent2: "#FA8963",
+                fresh: "#C5D457", warm: "#FAEE68", due: "#FAAE59", urgent: "#FE5228",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.25, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#FAEE68", "#E5A93C", "#FE6828"]
             )
-
         case (.omarchyAmber, false):
-            // "4. SUNFLOWER DREAMS" from Sheet 2
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#F9ECB8"),
-                canvasSecondary: Color(hex: "#F1DE94"),
-                cardSurface: Color(hex: "#FFFBEF"),
-                cardElevatedSurface: Color(hex: "#FFFFFF"),
-                primaryInk: Color(hex: "#241A04"),
-                secondaryInk: Color(hex: "#695114"),
-                borderInk: Color(hex: "#DBBD5C"),
-                hardShadowColor: Color.black.opacity(0.06),
-                accentPrimary: Color(hex: "#B87A04"),
-                accentSecondary: Color(hex: "#D95614"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#557D1E"),
-                warmingColor: Color(hex: "#C78700"),
-                dueNowColor: Color(hex: "#D95614"),
-                urgentColor: Color(hex: "#C92A1D"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.3,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#F2B705"), Color(hex: "#D95614")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F6EED9", bgSec: "#EAE0C3", card: "#FFFDF7", cardElev: "#FFFFFF",
+                ink: "#241A04", inkSec: "#695114", border: "#DAC694",
+                accent1: "#B87A04", accent2: "#D95614",
+                fresh: "#557D1E", warm: "#C78700", due: "#D95614", urgent: "#C92A1D",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.25, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#F2B705", "#D95614"]
             )
 
-        // -----------------------------------------------------------------
-        // 9. OMARCHY SOLAR FLARE (Sheet 2 Col 2 — High-Voltage Tangerine)
-        // -----------------------------------------------------------------
+        // 21. Omarchy Solar Copper
         case (.omarchySolarFlare, false):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: false,
-                canvasBackground: Color(hex: "#FCD89D"),
-                canvasSecondary: Color(hex: "#F7C474"),
-                cardSurface: Color(hex: "#FFF4E0"),
-                cardElevatedSurface: Color(hex: "#FFFAF0"),
-                primaryInk: Color(hex: "#291003"),
-                secondaryInk: Color(hex: "#6E3510"),
-                borderInk: Color(hex: "#E3984B"),
-                hardShadowColor: Color.black.opacity(0.07),
-                accentPrimary: Color(hex: "#DE5412"),
-                accentSecondary: Color(hex: "#9E3508"),
-                onAccentPrimary: .white,
-                onAccentSecondary: .white,
-                freshColor: Color(hex: "#4C7D22"),
-                warmingColor: Color(hex: "#CC7008"),
-                dueNowColor: Color(hex: "#E6480F"),
-                urgentColor: Color(hex: "#BA1C1C"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.35,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#FA9A28"), Color(hex: "#FE5228"), Color(hex: "#9E3508")]
+            return makeTokens(
+                preset: preset, isDark: false,
+                bg: "#F7E6D4", bgSec: "#ECD4BC", card: "#FFF8F0", cardElev: "#FFFCF8",
+                ink: "#291408", inkSec: "#6E4226", border: "#DEB48E",
+                accent1: "#CC5520", accent2: "#944018",
+                fresh: "#4C7D22", warm: "#C47010", due: "#D94D1A", urgent: "#B82525",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.25, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#E8882C", "#CC5520", "#944018"]
             )
-
         case (.omarchySolarFlare, true):
-            return ADHOUSEDThemeTokens(
-                preset: preset,
-                isDark: true,
-                canvasBackground: Color(hex: "#14100E"),
-                canvasSecondary: Color(hex: "#2B1D15"),
-                cardSurface: Color(hex: "#1F1510"),
-                cardElevatedSurface: Color(hex: "#2E1F17"),
-                primaryInk: Color(hex: "#FFF0E3"),
-                secondaryInk: Color(hex: "#C29B7E"),
-                borderInk: Color(hex: "#5C3620"),
-                hardShadowColor: Color.black.opacity(0.45),
-                accentPrimary: Color(hex: "#FA8428"),
-                accentSecondary: Color(hex: "#FAEE68"),
-                onAccentPrimary: Color(hex: "#1A0D04"),
-                onAccentSecondary: Color(hex: "#1A0D04"),
-                freshColor: Color(hex: "#B0D656"),
-                warmingColor: Color(hex: "#FAEE68"),
-                dueNowColor: Color(hex: "#FA6828"),
-                urgentColor: Color(hex: "#FE2D28"),
-                cardCornerRadius: 10,
-                pillCornerRadius: 7,
-                cardBorderWidth: 1.35,
-                usesHardOffsetShadow: false,
-                hardShadowOffset: 0,
-                isTerminalHUD: true,
-                fontDesign: .monospaced,
-                focusGradientColors: [Color(hex: "#FAEE68"), Color(hex: "#FA8428"), Color(hex: "#FE2D28")]
+            return makeTokens(
+                preset: preset, isDark: true,
+                bg: "#14100E", bgSec: "#291E18", card: "#1E1612", cardElev: "#2B201A",
+                ink: "#FFF0E3", inkSec: "#C29B7E", border: "#543524",
+                accent1: "#FA8428", accent2: "#FAEE68",
+                fresh: "#B0D656", warm: "#FAEE68", due: "#FA6828", urgent: "#FE2D28",
+                cardRadius: 10, pillRadius: 7, borderWidth: 1.25, terminalHUD: true, font: .monospaced,
+                focusGrad: ["#FAEE68", "#FA8428", "#FE2D28"]
             )
         }
     }
+    // swiftlint:enable function_body_length
 
     public func color(for stage: FreshnessStage) -> Color {
         switch stage {
@@ -700,88 +775,25 @@ public struct ADHOUSEDThemeTokens: Sendable {
     }
 
     public func roomAccent(for room: RoomCategory) -> Color {
-        switch preset {
-        case .warmTactileBento:
+        // When user customized primary accent or uses monochrome/quiet themes, blend harmoniously
+        if preset == .quattroMinimal || preset == .quattroAsh || preset == .quietSanctuary {
             switch room {
-            case .kitchen: return Color(hex: isDark ? "#F09A48" : "#D97736")
-            case .bathroom: return Color(hex: isDark ? "#59B4D1" : "#348AA7")
-            case .bedroom: return Color(hex: isDark ? "#A98EDA" : "#7C5FB8")
-            case .living: return Color(hex: isDark ? "#52C488" : "#3E9B6C")
-            case .laundry: return Color(hex: isDark ? "#6BA3E8" : "#4378BD")
-            case .petsAndPlants: return Color(hex: isDark ? "#7ACC66" : "#569E44")
-            case .entryAndTrash: return Color(hex: isDark ? "#E87A64" : "#C95944")
-            case .general: return accentPrimary
+            case .kitchen, .living, .general: return accentPrimary
+            case .bathroom, .laundry, .bedroom: return accentSecondary
+            case .petsAndPlants: return freshColor
+            case .entryAndTrash: return dueNowColor
             }
+        }
 
-        case .chunkyNeoBrutalistPop:
-            switch room {
-            case .kitchen: return Color(hex: "#FF7A2F")
-            case .bathroom: return Color(hex: "#00B8D9")
-            case .bedroom: return Color(hex: "#9B6BFF")
-            case .living: return Color(hex: "#00C97E")
-            case .laundry: return Color(hex: "#3B66FF")
-            case .petsAndPlants: return Color(hex: "#65D629")
-            case .entryAndTrash: return Color(hex: "#FF4D5E")
-            case .general: return accentPrimary
-            }
-
-        case .omarchyQuattro:
-            // Reference ANSI Spectrum from Omarchy OS Style Sheet
-            switch room {
-            case .kitchen: return Color(hex: isDark ? "#E0AF68" : "#C27816")
-            case .bathroom: return Color(hex: isDark ? "#7DCFFF" : "#1F7EA8")
-            case .bedroom: return Color(hex: isDark ? "#BB9AF7" : "#6E44C9")
-            case .living: return Color(hex: isDark ? "#9ECE6A" : "#3C8A4B")
-            case .laundry: return Color(hex: isDark ? "#7AA2F7" : "#3B66D4")
-            case .petsAndPlants: return Color(hex: isDark ? "#73DACA" : "#248277")
-            case .entryAndTrash: return Color(hex: isDark ? "#F7768E" : "#C93653")
-            case .general: return accentPrimary
-            }
-
-        case .omarchyEverforest:
-            switch room {
-            case .kitchen: return Color(hex: isDark ? "#DBBC7F" : "#9E6D16")
-            case .bathroom: return Color(hex: isDark ? "#7FBBB3" : "#2E706A")
-            case .bedroom: return Color(hex: isDark ? "#D699B6" : "#8A4769")
-            case .living: return Color(hex: isDark ? "#A7C080" : "#467840")
-            case .laundry: return Color(hex: isDark ? "#83C092" : "#357266")
-            case .petsAndPlants: return Color(hex: isDark ? "#A7C080" : "#3B6E36")
-            case .entryAndTrash: return Color(hex: isDark ? "#E69875" : "#B55228")
-            case .general: return accentPrimary
-            }
-
-        case .omarchyCyberpunk:
-            switch room {
-            case .kitchen: return Color(hex: isDark ? "#FF5EE2" : "#D6189A")
-            case .bathroom: return Color(hex: isDark ? "#3BF4FB" : "#008CA8")
-            case .bedroom: return Color(hex: isDark ? "#A855F7" : "#7B2CBF")
-            case .living: return Color(hex: isDark ? "#00F5A0" : "#008F5D")
-            case .laundry: return Color(hex: isDark ? "#60A5FA" : "#2563EB")
-            case .petsAndPlants: return Color(hex: isDark ? "#2DD4BF" : "#0D9488")
-            case .entryAndTrash: return Color(hex: isDark ? "#FF477E" : "#D91B5C")
-            case .general: return accentPrimary
-            }
-
-        case .quattroMinimal:
-            // Sheet 1 Rule 1: Zero-Saturation / Monochrome Slate Tonal Ramp
-            return isDark ? Color(hex: "#B4C7DC") : Color(hex: "#415468")
-
-        case .quattroAsh:
-            // Sheet 1 & 2: Warm Mineral Ash & Desert Sun Tonal Ramp
-            return isDark ? Color(hex: "#DBD1C0") : Color(hex: "#7D6024")
-
-        case .omarchyAmber, .omarchySolarFlare:
-            // Sheet 2 Rule 1 & 3: Warm Spectrum Primary Shift (Yellow -> Amber -> Solar Coral)
-            switch room {
-            case .kitchen: return Color(hex: isDark ? "#FAAE59" : "#D95614")
-            case .bathroom: return Color(hex: isDark ? "#FAEE68" : "#B87A04")
-            case .bedroom: return Color(hex: isDark ? "#F5A558" : "#A65A08")
-            case .living: return Color(hex: isDark ? "#E5A93C" : "#BA6E0A")
-            case .laundry: return Color(hex: isDark ? "#FAD05A" : "#9E6408")
-            case .petsAndPlants: return Color(hex: isDark ? "#C9D457" : "#5B7D1A")
-            case .entryAndTrash: return Color(hex: isDark ? "#FE6828" : "#C93B14")
-            case .general: return accentPrimary
-            }
+        switch room {
+        case .kitchen: return warmingColor
+        case .bathroom: return accentSecondary
+        case .bedroom: return isDark ? Color(hex: "#B497E7") : Color(hex: "#7857B8")
+        case .living: return accentPrimary
+        case .laundry: return isDark ? Color(hex: "#73A9E6") : Color(hex: "#3E73B5")
+        case .petsAndPlants: return freshColor
+        case .entryAndTrash: return dueNowColor
+        case .general: return accentPrimary
         }
     }
 }
@@ -789,7 +801,7 @@ public struct ADHOUSEDThemeTokens: Sendable {
 // MARK: - SwiftUI Environment Key
 
 private struct ADHOUSEDThemeKey: EnvironmentKey {
-    static let defaultValue = ADHOUSEDThemeTokens.resolve(preset: .warmTactileBento, colorScheme: .light)
+    static let defaultValue = ADHOUSEDThemeTokens.resolve(preset: .quietSanctuary, colorScheme: .light)
 }
 
 public extension EnvironmentValues {
@@ -813,7 +825,7 @@ public struct ThemedCardModifier: ViewModifier {
 
     public func body(content: Content) -> some View {
         let radius = compact
-            ? max(theme.isTerminalHUD ? 8 : 12, theme.cardCornerRadius - (theme.isTerminalHUD ? 2 : 6))
+            ? max(theme.isTerminalHUD ? 7 : 12, theme.cardCornerRadius - (theme.isTerminalHUD ? 2 : 6))
             : theme.cardCornerRadius
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
 
@@ -832,13 +844,12 @@ public struct ThemedCardModifier: ViewModifier {
                         .fill(theme.cardSurface)
                     if let highlightTint, !theme.usesHardOffsetShadow {
                         shape
-                            .fill(highlightTint.opacity(theme.isTerminalHUD ? (theme.isDark ? 0.07 : 0.05) : (theme.isDark ? 0.10 : 0.06)))
+                            .fill(highlightTint.opacity(theme.isTerminalHUD ? (theme.isDark ? 0.06 : 0.04) : (theme.isDark ? 0.08 : 0.05)))
                     }
                 }
             }
             .overlay {
                 if theme.isTerminalHUD && highlightTint != nil {
-                    // Omarchy Quattro OS Style Sheet Section 5: 45-degree Active Focus Border Ring
                     shape
                         .strokeBorder(
                             LinearGradient(
@@ -846,7 +857,7 @@ public struct ThemedCardModifier: ViewModifier {
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
-                            lineWidth: compact ? 1.45 : 1.75
+                            lineWidth: compact ? 1.35 : 1.65
                         )
                 } else {
                     shape
@@ -860,9 +871,9 @@ public struct ThemedCardModifier: ViewModifier {
             }
             .shadow(
                 color: (theme.usesHardOffsetShadow || theme.isTerminalHUD) ? .clear : theme.hardShadowColor,
-                radius: compact ? 6 : 12,
+                radius: compact ? 5 : 10,
                 x: 0,
-                y: compact ? 3 : 6
+                y: compact ? 2 : 4
             )
     }
 }
@@ -873,10 +884,6 @@ public extension View {
     }
 }
 
-/// Tactile button style adapting across:
-/// - Warm Tactile Bento (plush springy elevation)
-/// - Chunky Neo-Brutalist Pop (physical 4pt mechanical switch offset)
-/// - Omarchy Quattro OS 4.x (crisp 8px terminal geometry, fill-alpha press & 45° active focus ring)
 public struct TactileActionButtonStyle: ButtonStyle {
     @Environment(\.adhousedTheme) private var theme
     public var fill: Color
@@ -901,14 +908,14 @@ public struct TactileActionButtonStyle: ButtonStyle {
                     if theme.usesHardOffsetShadow {
                         shape
                             .fill(theme.borderInk)
-                            .offset(x: pressed ? 0.5 : 3.0, y: pressed ? 0.5 : 3.0)
+                            .offset(x: pressed ? 0.5 : 2.8, y: pressed ? 0.5 : 2.8)
                     }
                     shape.fill(fill.opacity(theme.isTerminalHUD && pressed ? 0.82 : 1.0))
                 }
             }
             .overlay {
                 if theme.usesHardOffsetShadow {
-                    shape.strokeBorder(theme.borderInk, lineWidth: 2.0)
+                    shape.strokeBorder(theme.borderInk, lineWidth: 1.8)
                 } else if theme.isTerminalHUD {
                     if pressed {
                         shape.strokeBorder(
@@ -917,7 +924,7 @@ public struct TactileActionButtonStyle: ButtonStyle {
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
-                            lineWidth: 1.75
+                            lineWidth: 1.6
                         )
                     } else {
                         shape.strokeBorder(theme.borderInk.opacity(0.85), lineWidth: 1.0)
@@ -925,10 +932,10 @@ public struct TactileActionButtonStyle: ButtonStyle {
                 }
             }
             .offset(
-                x: theme.usesHardOffsetShadow && pressed ? 2.5 : 0,
-                y: theme.usesHardOffsetShadow && pressed ? 2.5 : 0
+                x: theme.usesHardOffsetShadow && pressed ? 2.0 : 0,
+                y: theme.usesHardOffsetShadow && pressed ? 2.0 : 0
             )
-            .scaleEffect(!theme.usesHardOffsetShadow && pressed ? (theme.isTerminalHUD ? 0.975 : 0.95) : 1.0)
-            .animation(.spring(response: 0.22, dampingFraction: 0.68), value: pressed)
+            .scaleEffect(!theme.usesHardOffsetShadow && pressed ? (theme.isTerminalHUD ? 0.975 : 0.96) : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: pressed)
     }
 }

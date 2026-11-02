@@ -24,6 +24,7 @@ struct ADHOUSEDFocusTimelineEntry: TimelineEntry {
     let totalDueCount: Int
     let themePreset: ThemePreset
     let colorSchemePreference: ColorSchemePreference
+    let colorOverrides: ThemeColorOverrides
     let bionicReadingEnabled: Bool
 }
 
@@ -42,7 +43,6 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
 
         var entries: [ADHOUSEDFocusTimelineEntry] = [currentEntry]
         if let expiry = earliestUndoExpiry, expiry > now {
-            // Schedule automatic post-Undo-grace rotation entry so the 8s Undo pill transitions to the next chore!
             let postGraceDate = expiry.addingTimeInterval(0.4)
             let (rotatedEntry, _) = await buildEntryWithExpiry(for: configuration, at: postGraceDate)
             entries.append(rotatedEntry)
@@ -67,6 +67,7 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
     ) async -> (ADHOUSEDFocusTimelineEntry, Date?) {
         let prefs = ADHOUSEDPreferences.shared
         prefs.reloadFromSharedDefaults()
+        let currentOverrides = prefs.colorOverrides(for: prefs.themePreset)
 
         guard let container = try? SharedAppGroup.makeModelContainer() else {
             return (sampleEntry(at: referenceDate), nil)
@@ -86,6 +87,7 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
                     totalDueCount: 0,
                     themePreset: prefs.themePreset,
                     colorSchemePreference: prefs.colorSchemePreference,
+                    colorOverrides: currentOverrides,
                     bionicReadingEnabled: prefs.bionicReadingEnabled
                 ),
                 nil
@@ -97,12 +99,12 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
 
         switch configuration.displayMode {
         case .topDueQueue:
-            header = "FOCUS QUEUE"
+            header = "DUE TODAY"
             candidateTasks = allTasks.filter {
                 !configuration.onlyMyActionableTasks || $0.isActionable(forMemberID: activeMemberID) || $0.hasActiveUndoGraceWindow(at: referenceDate)
             }
         case .lowSpoonsQuickWins:
-            header = "QUICK WINS (≤5M)"
+            header = "QUICK & EASY (≤5M)"
             candidateTasks = allTasks.filter {
                 $0.isQuickLowSpoonWin && (!configuration.onlyMyActionableTasks || $0.isActionable(forMemberID: activeMemberID) || $0.hasActiveUndoGraceWindow(at: referenceDate))
             }
@@ -125,7 +127,6 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
             now: referenceDate
         )
 
-        // Prefer due or active-undo tasks; if none due and mode is pinned/room, show freshest status
         let activeBreak = prefs.activeVacationBreak(at: referenceDate)
         let dueOnly = sorted.filter { $0.snapshot.isActionableToday || $0.task.hasActiveUndoGraceWindow(at: referenceDate) }
         let chosenSource = (dueOnly.isEmpty && (configuration.displayMode == .pinnedChore || configuration.displayMode == .roomFilter))
@@ -178,6 +179,7 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
                 totalDueCount: dueOnly.count,
                 themePreset: prefs.themePreset,
                 colorSchemePreference: prefs.colorSchemePreference,
+                colorOverrides: currentOverrides,
                 bionicReadingEnabled: prefs.bionicReadingEnabled
             ),
             earliestExpiry
@@ -187,7 +189,7 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
     private func sampleEntry(at date: Date) -> ADHOUSEDFocusTimelineEntry {
         ADHOUSEDFocusTimelineEntry(
             date: date,
-            headerLabel: "FOCUS QUEUE",
+            headerLabel: "DUE TODAY",
             items: [
                 WidgetChoreRowItem(
                     id: UUID().uuidString,
@@ -198,7 +200,7 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
                     batteryFill: 0.08,
                     stage: .dueToday,
                     cadenceSummary: "Done yesterday · daily",
-                    turnBadge: "🦊 Alex",
+                    turnBadge: "🦊 Me",
                     isInUndoGraceState: false
                 ),
                 WidgetChoreRowItem(
@@ -215,8 +217,9 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
                 )
             ],
             totalDueCount: 2,
-            themePreset: .warmTactileBento,
+            themePreset: .quietSanctuary,
             colorSchemePreference: .signature,
+            colorOverrides: ThemeColorOverrides(),
             bionicReadingEnabled: false
         )
     }
@@ -233,7 +236,11 @@ struct ADHOUSEDFocusWidgetView: View {
             preference: entry.colorSchemePreference,
             systemColorScheme: colorScheme
         )
-        return ADHOUSEDThemeTokens.resolve(preset: entry.themePreset, colorScheme: effective)
+        return ADHOUSEDThemeTokens.resolve(
+            preset: entry.themePreset,
+            colorScheme: effective,
+            overrides: entry.colorOverrides
+        )
     }
 
     var body: some View {
@@ -265,15 +272,16 @@ struct ADHOUSEDFocusWidgetView: View {
     private var smallHomeWidget: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(theme.hudTag(entry.headerLabel))
+                Text(entry.headerLabel)
                     .font(.system(size: 9, weight: .black, design: theme.fontDesign))
-                    .tracking(0.7)
+                    .tracking(0.6)
                     .foregroundStyle(theme.secondaryInk)
+                    .lineLimit(1)
                 Spacer()
                 if entry.totalDueCount > 0 {
                     Text("\(entry.totalDueCount)")
                         .font(.system(size: 10, weight: .black, design: theme.fontDesign))
-                        .foregroundStyle(theme.isDark && theme.isTerminalHUD ? Color(hex: "#13141C") : .white)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
@@ -286,7 +294,7 @@ struct ADHOUSEDFocusWidgetView: View {
             if let top = entry.items.first {
                 if top.isInUndoGraceState {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("Marked Fresh!", systemImage: "checkmark.seal.fill")
+                        Label("Done!", systemImage: "checkmark.seal.fill")
                             .font(.caption.weight(.heavy))
                             .foregroundStyle(theme.freshColor)
                         Text(top.title)
@@ -297,7 +305,7 @@ struct ADHOUSEDFocusWidgetView: View {
                         Button(intent: UndoCompleteTaskIntent(taskIDString: top.id)) {
                             HStack {
                                 Image(systemName: "arrow.uturn.backward")
-                                Text("Undo Tap")
+                                Text("Undo")
                             }
                             .font(.caption.weight(.heavy))
                             .frame(maxWidth: .infinity)
@@ -309,11 +317,13 @@ struct ADHOUSEDFocusWidgetView: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 5) {
-                            Image(systemName: top.iconSymbol)
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(theme.roomAccent(for: top.room))
-                            Text("⚡ \(top.estimatedMinutes)m")
+                        HStack(spacing: 6) {
+                            ChoreIconBadgeView(
+                                iconSymbol: top.iconSymbol,
+                                tint: theme.roomAccent(for: top.room),
+                                size: 22
+                            )
+                            Text("~\(top.estimatedMinutes) min")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(theme.secondaryInk)
                         }
@@ -331,7 +341,7 @@ struct ADHOUSEDFocusWidgetView: View {
                         Button(intent: CompleteTaskIntent(taskIDString: top.id, fromWidgetUndoable: true)) {
                             HStack(spacing: 5) {
                                 Image(systemName: "checkmark.circle.fill")
-                                Text("Tap Done")
+                                Text("Mark Done")
                             }
                             .font(.caption.weight(.heavy))
                             .frame(maxWidth: .infinity)
@@ -350,10 +360,10 @@ struct ADHOUSEDFocusWidgetView: View {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.title2)
                     .foregroundStyle(theme.freshColor)
-                Text("All Fresh!")
+                Text("All Caught Up!")
                     .font(.subheadline.weight(.heavy))
                     .foregroundStyle(theme.primaryInk)
-                Text("Zero chores due right now")
+                Text("No chores due right now")
                     .font(.caption2)
                     .foregroundStyle(theme.secondaryInk)
                 Spacer()
@@ -370,13 +380,14 @@ struct ADHOUSEDFocusWidgetView: View {
                     Image(systemName: theme.isTerminalHUD ? "terminal.fill" : "sparkles")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(theme.accentPrimary)
-                    Text(theme.hudTag(entry.headerLabel))
+                    Text(entry.headerLabel)
                         .font(.system(size: 10, weight: .black, design: theme.fontDesign))
-                        .tracking(0.8)
+                        .tracking(0.7)
                         .foregroundStyle(theme.secondaryInk)
+                        .lineLimit(1)
                 }
                 Spacer()
-                Text(entry.totalDueCount == 0 ? "All Caught Up" : "\(entry.totalDueCount) Ready")
+                Text(entry.totalDueCount == 0 ? "All Caught Up" : "\(entry.totalDueCount) Due")
                     .font(.caption2.weight(.heavy))
                     .foregroundStyle(entry.totalDueCount == 0 ? theme.freshColor : theme.dueNowColor)
             }
@@ -388,10 +399,10 @@ struct ADHOUSEDFocusWidgetView: View {
                         .font(.title)
                         .foregroundStyle(theme.freshColor)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Focus Deck is Clear!")
+                        Text("All Chores Caught Up!")
                             .font(.subheadline.weight(.heavy))
                             .foregroundStyle(theme.primaryInk)
-                        Text("Every task for your turn is still fresh.")
+                        Text("Nothing due right now.")
                             .font(.caption)
                             .foregroundStyle(theme.secondaryInk)
                     }
@@ -430,10 +441,11 @@ struct ADHOUSEDFocusWidgetView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Image(systemName: item.iconSymbol)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(theme.roomAccent(for: item.room))
-                    .frame(width: 24)
+                ChoreIconBadgeView(
+                    iconSymbol: item.iconSymbol,
+                    tint: theme.roomAccent(for: item.room),
+                    size: 28
+                )
 
                 VStack(alignment: .leading, spacing: 2) {
                     SalientText(
@@ -441,10 +453,10 @@ struct ADHOUSEDFocusWidgetView: View {
                         bionicEnabled: entry.bionicReadingEnabled,
                         font: .caption.weight(.heavy),
                         color: theme.primaryInk,
-                        lineLimit: 1
+                        lineLimit: 2
                     )
                     HStack(spacing: 5) {
-                        Text("\(item.room.shortTitle) · ⚡ \(item.estimatedMinutes)m")
+                        Text("\(item.room.shortTitle) · ~\(item.estimatedMinutes) min")
                         if let turn = item.turnBadge {
                             Text("· \(turn)")
                         }
@@ -498,7 +510,7 @@ struct ADHOUSEDFocusWidgetView: View {
         }
     }
 
-    // MARK: - Lock Screen Accessory Rectangular & Circular (1-Tap Right Under Clock!)
+    // MARK: - Lock Screen Accessory Rectangular & Circular
 
     private var lockScreenRectangularWidget: some View {
         Group {
@@ -506,7 +518,7 @@ struct ADHOUSEDFocusWidgetView: View {
                 if top.isInUndoGraceState {
                     Button(intent: UndoCompleteTaskIntent(taskIDString: top.id)) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Label("Marked Fresh!", systemImage: "checkmark.circle.fill")
+                            Label("Marked Done!", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.heavy))
                             Text("Tap here within 8s to Undo")
                                 .font(.caption2)
@@ -522,8 +534,8 @@ struct ADHOUSEDFocusWidgetView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(top.title)
                                     .font(.caption.weight(.heavy))
-                                    .lineLimit(1)
-                                Text("Tap to complete · \(top.estimatedMinutes)m · \(entry.totalDueCount) due")
+                                    .lineLimit(2)
+                                Text("Tap to complete · ~\(top.estimatedMinutes)m · \(entry.totalDueCount) due")
                                     .font(.caption2)
                                     .opacity(0.85)
                                     .lineLimit(1)
@@ -537,9 +549,9 @@ struct ADHOUSEDFocusWidgetView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.seal.fill")
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("ADHOUSED Clear")
+                        Text("All Caught Up")
                             .font(.caption.weight(.bold))
-                        Text("Zero chores due")
+                        Text("No chores due")
                             .font(.caption2)
                     }
                 }
@@ -551,9 +563,10 @@ struct ADHOUSEDFocusWidgetView: View {
         ZStack {
             AccessoryWidgetBackground()
             if let top = entry.items.first {
+                let sfSym = ChoreIconCatalog.fallbackSystemSymbol(for: top.iconSymbol)
                 Button(intent: CompleteTaskIntent(taskIDString: top.id, fromWidgetUndoable: true)) {
                     VStack(spacing: 1) {
-                        Image(systemName: top.isInUndoGraceState ? "arrow.uturn.backward" : top.iconSymbol)
+                        Image(systemName: top.isInUndoGraceState ? "arrow.uturn.backward" : sfSym)
                             .font(.caption.weight(.bold))
                         Text("\(entry.totalDueCount)")
                             .font(.caption2.weight(.black))

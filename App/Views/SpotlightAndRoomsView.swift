@@ -8,10 +8,17 @@ struct SpotlightAndRoomsView: View {
     let tasks: [ChoreTask]
     let members: [HouseholdMember]
     let activeMember: HouseholdMember?
+    var isQuietMode: Bool = false
+
+    @State private var showPartnerSection: Bool = false
+    @State private var showUpcomingDrawer: Bool = false
 
     private var filteredTasks: [ChoreTask] {
         tasks.filter { task in
             guard !task.isArchived else { return false }
+            if let room = session.selectedRoom, task.room != room {
+                return false
+            }
             if session.lowSpoonsFilterEnabled && !task.isQuickLowSpoonWin {
                 return false
             }
@@ -26,54 +33,88 @@ struct SpotlightAndRoomsView: View {
         )
     }
 
-    /// Focus Deck strictly shows tasks actionable today for the active household member (or Up for Grabs).
-    private var dueForMeToday: [(task: ChoreTask, snapshot: TaskFreshnessSnapshot)] {
+    /// Tasks due today for me (or everyone if `showEveryoneChores` is enabled or a specific room is selected).
+    private var dueTodayPrimary: [(task: ChoreTask, snapshot: TaskFreshnessSnapshot)] {
         prioritizedAll.filter { pair in
-            pair.snapshot.isActionableToday && pair.task.isActionable(forMemberID: activeMember?.id)
+            guard pair.snapshot.isActionableToday else { return false }
+            if session.showEveryoneChores || members.count <= 1 {
+                return true
+            }
+            return pair.task.isActionable(forMemberID: activeMember?.id)
         }
+    }
+
+    /// Partner's due tasks (when >1 member and viewing "My Turn Only" mode).
+    private var dueForPartnerToday: [(task: ChoreTask, snapshot: TaskFreshnessSnapshot)] {
+        guard members.count > 1 && !session.showEveryoneChores else { return [] }
+        return prioritizedAll.filter { pair in
+            pair.snapshot.isActionableToday && !pair.task.isActionable(forMemberID: activeMember?.id)
+        }
+    }
+
+    /// Chores that are already clean / not due yet!
+    private var notDueYetItems: [(task: ChoreTask, snapshot: TaskFreshnessSnapshot)] {
+        prioritizedAll.filter { !$0.snapshot.isActionableToday }
+    }
+
+    private var cardStyle: ChoreCardDisplayStyle {
+        isQuietMode ? .quietMinimalRow : .spotlightCard
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            todaySpotlightSection
-            roomsBentoSection
+        VStack(alignment: .leading, spacing: isQuietMode ? 14 : 20) {
+            dueTodaySection
+
+            if !dueForPartnerToday.isEmpty {
+                partnerDueSection
+            }
+
+            if !notDueYetItems.isEmpty {
+                notDueYetSection
+            }
         }
     }
 
-    // MARK: - Today Spotlight (Capped Focus Deck to Prevent Wall-of-Chores Paralysis)
+    // MARK: - 1. Due Today Section
 
-    private var todaySpotlightSection: some View {
-        let cap = 3
+    private var dueTodaySection: some View {
+        let cap = session.selectedRoom != nil ? 12 : (isQuietMode ? 5 : 4)
         let visibleDeck = session.showAllDueTasksInSpotlight
-            ? dueForMeToday
-            : Array(dueForMeToday.prefix(cap))
-        let hiddenCount = max(0, dueForMeToday.count - cap)
+            ? dueTodayPrimary
+            : Array(dueTodayPrimary.prefix(cap))
+        let hiddenCount = max(0, dueTodayPrimary.count - cap)
 
-        return VStack(alignment: .leading, spacing: 12) {
+        let sectionTitle: String = {
+            if let room = session.selectedRoom {
+                return "\(room.title) — Due Today"
+            }
+            return isQuietMode ? "Focus Today" : "Due Today"
+        }()
+
+        return VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline) {
-                HStack(spacing: 7) {
-                    Image(systemName: theme.isTerminalHUD ? "terminal.fill" : "sun.max.fill")
-                        .foregroundStyle(theme.dueNowColor)
-                    Text(theme.hudTag("Today Spotlight"))
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(theme.primaryInk)
-                }
+                Text(sectionTitle)
+                    .font(isQuietMode ? .headline.weight(.bold) : .title3.weight(.heavy))
+                    .foregroundStyle(theme.primaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 Spacer()
-                Text(dueForMeToday.isEmpty ? "0 due" : "\(dueForMeToday.count) ready")
+
+                Text(dueTodayPrimary.isEmpty ? "All done" : "\(dueTodayPrimary.count) due")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(dueForMeToday.isEmpty ? theme.freshColor : theme.dueNowColor)
+                    .foregroundStyle(dueTodayPrimary.isEmpty ? theme.freshColor : theme.dueNowColor)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(
-                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 5 : 99, style: .continuous)
-                            .fill((dueForMeToday.isEmpty ? theme.freshColor : theme.dueNowColor).opacity(0.15))
+                        Capsule()
+                            .fill((dueTodayPrimary.isEmpty ? theme.freshColor : theme.dueNowColor).opacity(0.14))
                     )
             }
 
             if visibleDeck.isEmpty {
                 calmCaughtUpCard
             } else {
-                VStack(spacing: 13) {
+                VStack(spacing: isQuietMode ? 9 : 12) {
                     ForEach(visibleDeck, id: \.task.id) { pair in
                         ChoreTaskCardView(
                             session: session,
@@ -81,7 +122,7 @@ struct SpotlightAndRoomsView: View {
                             snapshot: pair.snapshot,
                             members: members,
                             activeMember: activeMember,
-                            displayStyle: .spotlightCard
+                            displayStyle: cardStyle
                         )
                     }
                 }
@@ -89,7 +130,7 @@ struct SpotlightAndRoomsView: View {
                 if hiddenCount > 0 {
                     Button {
                         HapticsEngine.shared.playMechanicalTap()
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                             session.showAllDueTasksInSpotlight.toggle()
                         }
                     } label: {
@@ -97,8 +138,8 @@ struct SpotlightAndRoomsView: View {
                             Image(systemName: session.showAllDueTasksInSpotlight ? "chevron.up.circle.fill" : "plus.circle.fill")
                             Text(
                                 session.showAllDueTasksInSpotlight
-                                    ? "Cap back to Top 3 Focus Deck"
-                                    : "Show \(hiddenCount) more ready today (hidden to prevent overwhelm)"
+                                    ? "Show top \(cap) only"
+                                    : "Show \(hiddenCount) more due today"
                             )
                             Spacer()
                         }
@@ -108,6 +149,7 @@ struct SpotlightAndRoomsView: View {
                         .padding(.vertical, 11)
                         .adhousedCard(compact: true)
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -119,91 +161,77 @@ struct SpotlightAndRoomsView: View {
         return HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill((activeBreak != nil ? theme.warmingColor : theme.freshColor).opacity(0.18))
-                    .frame(width: 48, height: 48)
+                    .fill((activeBreak != nil ? theme.warmingColor : theme.freshColor).opacity(0.16))
+                    .frame(width: 44, height: 44)
                 Image(systemName: activeBreak?.iconSymbol ?? "checkmark.seal.fill")
-                    .font(.title2)
+                    .font(.title3)
                     .foregroundStyle(activeBreak != nil ? theme.warmingColor : theme.freshColor)
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 SalientText(
                     activeBreak != nil
-                        ? "Paused for \(activeBreak!.title)!"
-                        : (session.lowSpoonsFilterEnabled
-                            ? "Zero Low-Spoons tasks due right now!"
-                            : "Your Focus Deck is sparkling clear!"),
-                    font: .headline.weight(.bold),
+                        ? "Paused for \(activeBreak!.title)"
+                        : (session.selectedRoom != nil
+                            ? "Nothing due in \(session.selectedRoom!.title) right now!"
+                            : (session.lowSpoonsFilterEnabled
+                                ? "No quick 5-minute chores due right now!"
+                                : "You're all caught up for today!")),
+                    font: .subheadline.weight(.bold),
                     color: theme.primaryInk
                 )
                 Text(
                     activeBreak != nil
-                        ? "Chores and persistent alerts are paused until \(activeBreak!.endDate.formatted(date: .abbreviated, time: .shortened)). Enjoy your time away!"
-                        : "Everything assigned to your turn is still fresh. Browse rooms below if you feel like getting ahead."
+                        ? "Chores and alerts resume \(activeBreak!.endDate.formatted(date: .abbreviated, time: .shortened))."
+                        : "Everything on your list is taken care of."
                 )
                 .font(.caption)
                 .foregroundStyle(theme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(16)
+        .padding(15)
         .adhousedCard(highlightTint: activeBreak != nil ? theme.warmingColor : theme.freshColor)
     }
 
-    // MARK: - Room / Zone Bento Switcher
+    // MARK: - 2. Partner's Turn Section (Crystal Clear Replacement for "Partner Turns")
 
-    private var roomsBentoSection: some View {
-        let populatedRooms = RoomCategory.allCases.filter { room in
-            filteredTasks.contains(where: { $0.room == room })
-        }
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(theme.hudTag("Browse by Room"))
-                    .font(.title3.weight(.heavy))
-                    .foregroundStyle(theme.primaryInk)
-                Spacer()
-                if session.selectedRoom != nil {
-                    Button("Show All Rooms") {
-                        HapticsEngine.shared.playMechanicalTap()
-                        withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
-                            session.selectedRoom = nil
-                        }
-                    }
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(theme.accentPrimary)
+    private var partnerDueSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                HapticsEngine.shared.playMechanicalTap()
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                    showPartnerSection.toggle()
                 }
-            }
-
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 11), GridItem(.flexible(), spacing: 11)], spacing: 11) {
-                ForEach(populatedRooms) { room in
-                    roomBentoTile(for: room)
-                }
-            }
-
-            // Room Chores List (either selected room or warming-up chores across rooms)
-            let roomPairs: [(task: ChoreTask, snapshot: TaskFreshnessSnapshot)] = {
-                if let selectedRoom = session.selectedRoom {
-                    return prioritizedAll.filter { $0.task.room == selectedRoom }
-                } else {
-                    return prioritizedAll.filter { !$0.snapshot.isActionableToday || !$0.task.isActionable(forMemberID: activeMember?.id) }
-                }
-            }()
-
-            if !roomPairs.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(session.selectedRoom != nil ? "\(session.selectedRoom!.title) Chores" : "Warming Up & Partner Turns")
-                        .font(.subheadline.weight(.heavy))
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.2.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(theme.accentSecondary)
+                    Text("Assigned to Partner (\(dueForPartnerToday.count) due)")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(theme.primaryInk)
+                    Spacer()
+                    Image(systemName: showPartnerSection ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
                         .foregroundStyle(theme.secondaryInk)
-                        .padding(.top, 4)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .adhousedCard(compact: true)
+            }
+            .buttonStyle(.plain)
 
-                    ForEach(roomPairs, id: \.task.id) { pair in
+            if showPartnerSection {
+                VStack(spacing: isQuietMode ? 9 : 11) {
+                    ForEach(dueForPartnerToday, id: \.task.id) { pair in
                         ChoreTaskCardView(
                             session: session,
                             task: pair.task,
                             snapshot: pair.snapshot,
                             members: members,
                             activeMember: activeMember,
-                            displayStyle: .spotlightCard
+                            displayStyle: cardStyle
                         )
                     }
                 }
@@ -211,72 +239,59 @@ struct SpotlightAndRoomsView: View {
         }
     }
 
-    private func roomBentoTile(for room: RoomCategory) -> some View {
-        let health = FreshnessCalculator.roomHealth(room: room, tasks: filteredTasks)
-        let isSelected = session.selectedRoom == room
-        let roomColor = theme.roomAccent(for: room)
+    // MARK: - 3. Not Due Yet Section (Crystal Clear Replacement for "Warming Up")
 
-        return Button {
-            HapticsEngine.shared.playMechanicalTap()
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
-                session.selectedRoom = isSelected ? nil : room
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 6 : 10, style: .continuous)
-                            .fill(roomColor.opacity(0.20))
-                            .frame(width: 34, height: 34)
-                        Image(systemName: room.symbolName)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(roomColor)
+    private var notDueYetSection: some View {
+        let autoExpand = session.selectedRoom != nil
+        let isExpanded = autoExpand || showUpcomingDrawer
+
+        return VStack(alignment: .leading, spacing: 10) {
+            if autoExpand {
+                Text("Not Due Yet in \(session.selectedRoom!.title)")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(theme.secondaryInk)
+                    .padding(.top, 2)
+            } else {
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
+                        showUpcomingDrawer.toggle()
                     }
-                    Spacer()
-                    if health.dueCount > 0 {
-                        Text("\(health.dueCount) due")
-                            .font(.caption2.weight(.heavy))
-                            .foregroundStyle(theme.isDark && theme.isTerminalHUD ? Color(hex: "#13141C") : .white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 5 : 99, style: .continuous)
-                                    .fill(theme.dueNowColor)
-                            )
-                    } else {
-                        Image(systemName: "checkmark.circle.fill")
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar")
+                            .font(.caption.weight(.bold))
                             .foregroundStyle(theme.freshColor)
-                            .font(.subheadline)
+                        Text("Not Due Yet · Coming Up Later (\(notDueYetItems.count))")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(theme.secondaryInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Image(systemName: showUpcomingDrawer ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(theme.secondaryInk)
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .adhousedCard(compact: true)
                 }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    SalientText(
-                        room.shortTitle,
-                        font: .subheadline.weight(.heavy),
-                        color: theme.primaryInk,
-                        lineLimit: 1
-                    )
-                    Text("\(Int(round(health.averageFill * 100)))% fresh · \(health.totalCount) \(health.totalCount == 1 ? "task" : "tasks")")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(theme.secondaryInk)
-                }
-
-                GeometryReader { geo in
-                    let barRadius: CGFloat = theme.isTerminalHUD ? 2.5 : 4.0
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: barRadius, style: .continuous)
-                            .fill(theme.canvasSecondary)
-                        RoundedRectangle(cornerRadius: barRadius, style: .continuous)
-                            .fill(health.dueCount > 0 ? theme.dueNowColor : roomColor)
-                            .frame(width: max(8, geo.size.width * health.averageFill))
-                    }
-                }
-                .frame(height: 6)
+                .buttonStyle(.plain)
             }
-            .padding(13)
-            .adhousedCard(highlightTint: isSelected ? roomColor : nil, compact: true)
+
+            if isExpanded {
+                VStack(spacing: isQuietMode ? 9 : 11) {
+                    ForEach(notDueYetItems, id: \.task.id) { pair in
+                        ChoreTaskCardView(
+                            session: session,
+                            task: pair.task,
+                            snapshot: pair.snapshot,
+                            members: members,
+                            activeMember: activeMember,
+                            displayStyle: cardStyle
+                        )
+                    }
+                }
+            }
         }
-        .buttonStyle(.plain)
     }
 }

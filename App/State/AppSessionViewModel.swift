@@ -27,11 +27,17 @@ public struct ActiveSprintSession: Equatable {
 @MainActor
 @Observable
 public final class AppSessionViewModel {
+    /// Quick & Easy (<= 5 min) filter
     public var lowSpoonsFilterEnabled: Bool = false
+    /// Room filter at top of dashboard (`nil` = All Rooms)
     public var selectedRoom: RoomCategory? = nil
+    /// Whether to expand the visual Room Health grid at top of dashboard
+    public var showRoomHealthGrid: Bool = false
+    /// When household has multiple members, filter to my actionable chores vs everyone's
+    public var showEveryoneChores: Bool = false
     public var showAllDueTasksInSpotlight: Bool = false
 
-    // Active Sprint ("Beat the Clock")
+    // Active Focus Timer
     public var activeSprint: ActiveSprintSession? = nil
     public var presentingSprintSheetForTask: ChoreTask? = nil
 
@@ -42,6 +48,8 @@ public final class AppSessionViewModel {
     public var presentingVacationBreakSheet: Bool = false
     public var presentingSettingsSheet: Bool = false
     public var presentingStarterCatalogSheet: Bool = false
+    public var presentingPartnerSharingSheet: Bool = false
+    public var customizingThemePreset: ThemePreset? = nil
 
     // Undo Toast
     public var undoToast: UndoToastBannerState? = nil
@@ -111,7 +119,7 @@ public final class AppSessionViewModel {
         HapticsEngine.shared.playSprintStart()
         let now = Date()
         let secs = max(60, minutes * 60)
-        let session = ActiveSprintSession(
+        let sprintSession = ActiveSprintSession(
             taskID: task.id,
             taskTitle: task.title,
             iconSymbol: task.iconSymbol,
@@ -121,7 +129,7 @@ public final class AppSessionViewModel {
             durationSeconds: secs
         )
         withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-            activeSprint = session
+            activeSprint = sprintSession
         }
         Task {
             await ReminderCoordinator.shared.startSprintLiveActivity(for: task, durationMinutes: minutes, now: now)
@@ -154,8 +162,8 @@ public final class AppSessionViewModel {
             if existing.isEmpty {
                 let templates = StarterCatalog.allTemplates.filter(\.recommendedByDefault)
                 let specs: [(name: String, emoji: String, hex: String)] = [
-                    ("Alex", "🦊", "#3E9B6C"),
-                    ("Sam", "🦦", "#3B66FF")
+                    ("Oscar", "🦊", "#3E9B6C"),
+                    ("Partner", "🦦", "#3B66FF")
                 ]
                 let mapped: [(StarterChoreTemplate, InitialFreshnessSeed, AssignmentMode)] = templates.enumerated().map { idx, tpl in
                     let mode: AssignmentMode = idx % 3 == 0 ? .alternating : (idx % 3 == 1 ? .anyone : .assigned)
@@ -163,12 +171,11 @@ public final class AppSessionViewModel {
                     return (tpl, seed, mode)
                 }
                 if let household = try? TaskActionService.bootstrapHousehold(
-                    householdName: "Maple Nest",
+                    householdName: "Big Boss's Flat",
                     memberSpecs: specs,
                     selectedTemplates: mapped,
                     in: context
                 ) {
-                    // Add a couple recent completions so the Momentum Pulse strip shines!
                     let members = (try? context.fetch(FetchDescriptor<HouseholdMember>())) ?? []
                     let tasks = (try? context.fetch(FetchDescriptor<ChoreTask>())) ?? []
                     for dayOffset in [0, -1, -2, -4, -5] {
@@ -183,10 +190,6 @@ public final class AppSessionViewModel {
                             )
                         }
                     }
-                    // Surface one chronic deferral badge example on a due task
-                    if tasks.count > 2 {
-                        tasks[1].deferralCount = 2
-                    }
                     try? context.save()
                 }
             } else {
@@ -195,10 +198,22 @@ public final class AppSessionViewModel {
         }
 
         let themeArgMap: [String: ThemePreset] = [
+            "--theme-quiet": .quietSanctuary,
+            "--theme-japandi": .japandiMoss,
+            "--theme-nordic": .nordicDaylight,
+            "--theme-matcha": .matchaOat,
+            "--theme-lofi": .lofiDusk,
+            "--theme-oceanic": .oceanicFocus,
             "--theme-brutalist": .chunkyNeoBrutalistPop,
             "--theme-bento": .warmTactileBento,
             "--theme-quattro": .omarchyQuattro,
+            "--theme-catppuccin": .omarchyCatppuccin,
+            "--theme-kanagawa": .omarchyKanagawa,
+            "--theme-rosepine": .omarchyRosePine,
+            "--theme-nord": .omarchyNord,
+            "--theme-matteblack": .omarchyMatteBlack,
             "--theme-everforest": .omarchyEverforest,
+            "--theme-gruvbox": .omarchyGruvbox,
             "--theme-cyberpunk": .omarchyCyberpunk,
             "--theme-minimal": .quattroMinimal,
             "--theme-ash": .quattroAsh,
@@ -207,6 +222,12 @@ public final class AppSessionViewModel {
         ]
         for (flag, preset) in themeArgMap where args.contains(flag) {
             prefs.selectThemePreset(preset)
+        }
+
+        if args.contains("--quiet-on") {
+            prefs.quietModeEnabled = true
+        } else if args.contains("--quiet-off") {
+            prefs.quietModeEnabled = false
         }
 
         if args.contains("--dark-mode") {
@@ -223,30 +244,24 @@ public final class AppSessionViewModel {
             prefs.layoutMode = .spotlightAndRooms
         }
 
-        if args.contains("--bionic-on") {
-            prefs.bionicReadingEnabled = true
-        } else if args.contains("--bionic-off") {
-            prefs.bionicReadingEnabled = false
-        }
-
         if args.contains("--open-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 self.presentingSettingsSheet = true
             }
         }
-
+        if args.contains("--open-catalog") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                self.presentingStarterCatalogSheet = true
+            }
+        }
+        if args.contains("--open-sharing") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                self.presentingPartnerSharingSheet = true
+            }
+        }
         if args.contains("--open-vacation") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 self.presentingVacationBreakSheet = true
-            }
-        }
-
-        if args.contains("--open-sprint") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                if let firstTask = (try? context.fetch(FetchDescriptor<ChoreTask>()))?.first {
-                    self.startBeatTheClockSprint(for: firstTask, minutes: 5)
-                    self.presentingSprintSheetForTask = firstTask
-                }
             }
         }
     }
