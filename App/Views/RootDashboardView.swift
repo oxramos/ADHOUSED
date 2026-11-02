@@ -83,11 +83,23 @@ struct RootDashboardView: View {
                     session.deferringTask = nil
                     session.startBeatTheClockSprint(for: task, minutes: 2)
                     session.presentingSprintSheetForTask = task
+                },
+                onOpenVacationBreakMode: {
+                    session.deferringTask = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        session.presentingVacationBreakSheet = true
+                    }
                 }
             )
             .fontDesign(theme.fontDesign)
             .environment(\.adhousedTheme, theme)
             .preferredColorScheme(theme.isDark ? .dark : .light)
+        }
+        .sheet(isPresented: $session.presentingVacationBreakSheet) {
+            VacationBreakSheet(session: session, prefs: prefs)
+                .fontDesign(theme.fontDesign)
+                .environment(\.adhousedTheme, theme)
+                .preferredColorScheme(theme.isDark ? .dark : .light)
         }
         .sheet(item: $session.presentingSprintSheetForTask) { task in
             SprintTimerOverlayView(session: session, task: task)
@@ -173,22 +185,20 @@ struct RootDashboardView: View {
                 }
             }
 
-            // Away 3h Timed Pause Quick Button
+            // Vacation / Break Mode Button (Date & Time Range Pause)
+            let hasActivePause = prefs.activeVacationBreak() != nil || household?.isCurrentlyPausedAway() == true
+            let hasUpcomingBreak = prefs.nextUpcomingVacationBreak() != nil
             Button {
                 HapticsEngine.shared.playMechanicalTap()
-                if household?.isCurrentlyPausedAway() == true {
-                    try? TaskActionService.clearAwayPause(in: modelContext)
-                } else {
-                    try? TaskActionService.pauseReminders(scope: .entireHousehold, durationMinutes: 180, in: modelContext)
-                }
+                session.presentingVacationBreakSheet = true
             } label: {
-                Image(systemName: household?.isCurrentlyPausedAway() == true ? "play.fill" : "door.right.hand.open")
+                Image(systemName: hasActivePause ? "pause.circle.fill" : (hasUpcomingBreak ? "calendar.badge.clock" : "suitcase.rolling.fill"))
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(household?.isCurrentlyPausedAway() == true ? theme.warmingColor : theme.primaryInk)
+                    .foregroundStyle(hasActivePause ? theme.warmingColor : (hasUpcomingBreak ? theme.accentPrimary : theme.primaryInk))
                     .frame(width: 38, height: 38)
-                    .adhousedCard(compact: true)
+                    .adhousedCard(highlightTint: hasActivePause ? theme.warmingColor : nil, compact: true)
             }
-            .accessibilityLabel("Toggle Out of House 3 hour reminder pause")
+            .accessibilityLabel("Vacation and Break Mode")
 
             // Theme & Settings Button
             Button {
@@ -212,11 +222,49 @@ struct RootDashboardView: View {
         return "Home Focus"
     }
 
-    // MARK: - Timed Away Pause Banner
+    // MARK: - Vacation / Break Mode Status Banner
 
     @ViewBuilder
     private var awayPauseStatusBanner: some View {
-        if let household, let pauseUntil = household.awayPauseUntil, pauseUntil > .now {
+        if let activeBreak = prefs.activeVacationBreak() {
+            HStack(spacing: 12) {
+                Image(systemName: activeBreak.iconSymbol)
+                    .font(.title3)
+                    .foregroundStyle(theme.warmingColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(activeBreak.title) — Chores & Alerts Paused")
+                        .font(.subheadline.weight(.heavy))
+                        .foregroundStyle(theme.primaryInk)
+                    Text(activeBreak.formattedRangeSummary())
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.secondaryInk)
+                }
+                Spacer(minLength: 4)
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    session.presentingVacationBreakSheet = true
+                } label: {
+                    Text("Dates")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                }
+                .buttonStyle(TactileActionButtonStyle(fill: theme.cardElevatedSurface, foreground: theme.primaryInk))
+
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    try? TaskActionService.clearAwayPause(in: modelContext)
+                } label: {
+                    Text("I'm Back")
+                        .font(.caption.weight(.heavy))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                }
+                .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: Color(hex: "#111216")))
+            }
+            .padding(13)
+            .adhousedCard(highlightTint: theme.warmingColor, compact: true)
+        } else if let household, let pauseUntil = household.awayPauseUntil, pauseUntil > .now {
             HStack(spacing: 12) {
                 Image(systemName: "pause.circle.fill")
                     .font(.title3)
@@ -225,7 +273,7 @@ struct RootDashboardView: View {
                     Text("Out of House — Alerts Paused")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(theme.primaryInk)
-                    Text("Persistent pings auto-resume at \(pauseUntil.formatted(date: .omitted, time: .shortened))")
+                    Text("Persistent pings auto-resume at \(pauseUntil.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(theme.secondaryInk)
                 }
@@ -234,7 +282,7 @@ struct RootDashboardView: View {
                     HapticsEngine.shared.playMechanicalTap()
                     try? TaskActionService.clearAwayPause(in: modelContext)
                 } label: {
-                    Text("I'm Home")
+                    Text("I'm Back")
                         .font(.caption.weight(.bold))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -243,6 +291,33 @@ struct RootDashboardView: View {
             }
             .padding(13)
             .adhousedCard(highlightTint: theme.warmingColor, compact: true)
+        } else if let upcoming = prefs.nextUpcomingVacationBreak() {
+            HStack(spacing: 12) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.title3)
+                    .foregroundStyle(theme.accentPrimary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scheduled Break: \(upcoming.title)")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(theme.primaryInk)
+                    Text(upcoming.formattedRangeSummary())
+                        .font(.caption)
+                        .foregroundStyle(theme.secondaryInk)
+                }
+                Spacer()
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    session.presentingVacationBreakSheet = true
+                } label: {
+                    Text("Edit")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                }
+                .buttonStyle(TactileActionButtonStyle(fill: theme.cardElevatedSurface, foreground: theme.primaryInk))
+            }
+            .padding(13)
+            .adhousedCard(highlightTint: theme.accentPrimary, compact: true)
         }
     }
 
@@ -297,6 +372,29 @@ struct RootDashboardView: View {
                     TactileActionButtonStyle(
                         fill: session.lowSpoonsFilterEnabled ? theme.warmingColor : theme.cardSurface,
                         foreground: session.lowSpoonsFilterEnabled ? Color(hex: "#111216") : theme.primaryInk
+                    )
+                )
+
+                // Vacation / Break Mode Quick Trigger Pill
+                let activeBreak = prefs.activeVacationBreak()
+                let upcomingBreak = prefs.nextUpcomingVacationBreak()
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    session.presentingVacationBreakSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: activeBreak != nil ? "pause.circle.fill" : (upcomingBreak != nil ? "calendar.badge.clock" : "tree.fill"))
+                            .font(.caption.weight(.bold))
+                        Text(activeBreak != nil ? "On Break" : (upcomingBreak != nil ? "Break Set" : "Vacation / Break"))
+                            .font(.subheadline.weight(.bold))
+                    }
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 9)
+                }
+                .buttonStyle(
+                    TactileActionButtonStyle(
+                        fill: activeBreak != nil ? theme.warmingColor : (upcomingBreak != nil ? theme.accentSecondary : theme.cardSurface),
+                        foreground: activeBreak != nil ? Color(hex: "#111216") : (upcomingBreak != nil ? theme.onAccentSecondary : theme.primaryInk)
                     )
                 )
 

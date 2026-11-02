@@ -45,11 +45,13 @@ public enum NagNotificationConstants {
 
 public enum NagSlotPlanner {
     /// Deterministically computes the rolling notification cascade across all actionable tasks
-    /// for the active household member, respecting Awake Hours and Timed "Away / Busy" pauses.
+    /// for the active household member, respecting Awake Hours, Timed "Away / Busy" pauses,
+    /// and scheduled or active Vacation / Break Date & Time windows.
     public static func computeSlots(
         tasks: [ChoreTask],
         household: Household?,
         activeMemberID: UUID?,
+        vacationBreaks: [VacationBreakWindow]? = nil,
         maxSlots: Int = NagNotificationConstants.maxBudgetSlots,
         horizonHours: Int = 36,
         now: Date = .now,
@@ -58,19 +60,23 @@ public enum NagSlotPlanner {
         let awakeStart = household?.awakeStartMinutes ?? (8 * 60 + 30)
         let awakeEnd = max(awakeStart + 60, household?.awakeEndMinutes ?? (21 * 60 + 30))
         let globalPauseUntil = household?.awayPauseUntil
+        let resolvedBreaks = (vacationBreaks ?? ADHOUSEDPreferences.shared.activeOrUpcomingVacationBreaks(at: now))
+            .filter { $0.endDate > now }
+            .sorted { $0.startDate < $1.startDate }
 
         let horizonEnd = now.addingTimeInterval(Double(horizonHours) * 3600.0)
         var candidates: [PlannedNagSlot] = []
 
         for task in tasks where !task.isArchived && task.remindersEnabled {
             guard task.isActionable(forMemberID: activeMemberID) else { continue }
-            let snap = FreshnessCalculator.snapshot(for: task, now: now, calendar: calendar)
+            // Evaluate raw snapshot without active break override so slots immediately after a break ends are still planned if within horizon
+            let rawSnap = FreshnessCalculator.snapshot(for: task, now: now, activeVacationBreak: nil, calendar: calendar)
 
             // Only schedule nag cascades for tasks actionable today (or whose due date falls inside horizon)
-            guard snap.isActionableToday || snap.dueDate <= horizonEnd else { continue }
+            guard rawSnap.isActionableToday || rawSnap.dueDate <= horizonEnd else { continue }
 
             let intervalSec = Double(max(15, task.nagIntervalMinutes)) * 60.0
-            var earliestStart = max(now.addingTimeInterval(60), snap.isActionableToday ? now.addingTimeInterval(intervalSec) : snap.dueDate)
+            var earliestStart = max(now.addingTimeInterval(60), rawSnap.isActionableToday ? now.addingTimeInterval(intervalSec) : rawSnap.dueDate)
 
             if let taskPause = task.pausedUntil, taskPause > earliestStart {
                 earliestStart = taskPause
@@ -82,8 +88,14 @@ public enum NagSlotPlanner {
                 earliestStart = deferred
             }
 
-            var cursor = clampToAwakeWindow(
-                date: earliestStart,
+            var cursor = advancePastVacationBreaks(
+                date: clampToAwakeWindow(
+                    date: earliestStart,
+                    awakeStartMinutes: awakeStart,
+                    awakeEndMinutes: awakeEnd,
+                    calendar: calendar
+                ),
+                breaks: resolvedBreaks,
                 awakeStartMinutes: awakeStart,
                 awakeEndMinutes: awakeEnd,
                 calendar: calendar
@@ -105,8 +117,14 @@ public enum NagSlotPlanner {
                 )
                 seq += 1
                 let nextRaw = cursor.addingTimeInterval(intervalSec)
-                cursor = clampToAwakeWindow(
-                    date: nextRaw,
+                cursor = advancePastVacationBreaks(
+                    date: clampToAwakeWindow(
+                        date: nextRaw,
+                        awakeStartMinutes: awakeStart,
+                        awakeEndMinutes: awakeEnd,
+                        calendar: calendar
+                    ),
+                    breaks: resolvedBreaks,
                     awakeStartMinutes: awakeStart,
                     awakeEndMinutes: awakeEnd,
                     calendar: calendar
@@ -123,6 +141,36 @@ public enum NagSlotPlanner {
         }
 
         return Array(candidates.prefix(maxSlots))
+    }
+
+    /// Advances any notification fire time that lands inside an active or scheduled Vacation/Break window
+    /// to the end of that break (clamped to the user's Awake Hours).
+    public static func advancePastVacationBreaks(
+        date: Date,
+        breaks: [VacationBreakWindow],
+        awakeStartMinutes: Int,
+        awakeEndMinutes: Int,
+        calendar: Calendar
+    ) -> Date {
+        var current = date
+        var didAdvance = true
+        var guardIterations = 0
+        while didAdvance && guardIterations < 16 {
+            didAdvance = false
+            guardIterations += 1
+            for brk in breaks {
+                if current >= brk.startDate && current < brk.endDate {
+                    current = clampToAwakeWindow(
+                        date: brk.endDate,
+                        awakeStartMinutes: awakeStartMinutes,
+                        awakeEndMinutes: awakeEndMinutes,
+                        calendar: calendar
+                    )
+                    didAdvance = true
+                }
+            }
+        }
+        return current
     }
 
     public static func clampToAwakeWindow(

@@ -39,6 +39,7 @@ public final class AppSessionViewModel {
     public var presentingNewTaskSheet: Bool = false
     public var editingTask: ChoreTask? = nil
     public var deferringTask: ChoreTask? = nil
+    public var presentingVacationBreakSheet: Bool = false
     public var presentingSettingsSheet: Bool = false
     public var presentingStarterCatalogSheet: Bool = false
 
@@ -231,6 +232,12 @@ public final class AppSessionViewModel {
         if args.contains("--open-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 self.presentingSettingsSheet = true
+            }
+        }
+
+        if args.contains("--open-vacation") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                self.presentingVacationBreakSheet = true
             }
         }
 

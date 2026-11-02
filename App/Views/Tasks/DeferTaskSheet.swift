@@ -9,8 +9,11 @@ struct DeferTaskSheet: View {
 
     let task: ChoreTask
     let onStartTwoMinuteSprintInstead: () -> Void
+    var onOpenVacationBreakMode: (() -> Void)? = nil
 
     @State private var selectedReason: String = "Out of spoons today"
+    @State private var useCustomPauseDate: Bool = false
+    @State private var customPauseUntil: Date = Date.now.addingTimeInterval(2 * 86_400)
 
     private let reasons = [
         "Out of spoons today",
@@ -97,27 +100,90 @@ struct DeferTaskSheet: View {
                     }
                 }
 
-                Spacer()
+                // Vacation / Countryside Break Pivot
+                if let onOpenVacationBreakMode {
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        onOpenVacationBreakMode()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "tree.fill")
+                                .font(.headline)
+                                .foregroundStyle(theme.warmingColor)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Going out of town or on a weekend break?")
+                                    .font(.caption.weight(.heavy))
+                                    .foregroundStyle(theme.primaryInk)
+                                Text("Pause ALL chores & notifications from Date & Time → Date & Time")
+                                    .font(.caption2)
+                                    .foregroundStyle(theme.secondaryInk)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(theme.secondaryInk)
+                        }
+                        .padding(12)
+                        .adhousedCard(highlightTint: theme.warmingColor, compact: true)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // Single-chore custom Date & Time pause option
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(isOn: $useCustomPauseDate) {
+                        Text("Pause this chore until a specific Date & Time")
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(theme.primaryInk)
+                    }
+                    .tint(theme.warmingColor)
+
+                    if useCustomPauseDate {
+                        DatePicker(
+                            "Resume Chore At",
+                            selection: $customPauseUntil,
+                            in: Date.now.addingTimeInterval(900)...,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .font(.caption.weight(.bold))
+                    }
+                }
+                .padding(12)
+                .adhousedCard(compact: true)
+
+                Spacer(minLength: 4)
 
                 Button {
                     HapticsEngine.shared.playMechanicalTap()
-                    try? TaskActionService.deferTaskToTomorrow(
-                        taskID: task.id,
-                        reasonTag: selectedReason,
-                        byMemberID: ADHOUSEDPreferences.shared.activeMemberID,
-                        in: modelContext
-                    )
+                    if useCustomPauseDate {
+                        try? TaskActionService.pauseSingleTaskUntil(
+                            taskID: task.id,
+                            resumeDate: customPauseUntil,
+                            in: modelContext
+                        )
+                    } else {
+                        try? TaskActionService.deferTaskToTomorrow(
+                            taskID: task.id,
+                            reasonTag: selectedReason,
+                            byMemberID: ADHOUSEDPreferences.shared.activeMemberID,
+                            in: modelContext
+                        )
+                    }
                     dismiss()
                 } label: {
-                    Text("Silence Today & Resume Tomorrow Morning")
-                        .font(.subheadline.weight(.heavy))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+                    Text(
+                        useCustomPauseDate
+                            ? "Pause Chore Until \(customPauseUntil.formatted(date: .abbreviated, time: .shortened))"
+                            : "Silence Today & Resume Tomorrow Morning"
+                    )
+                    .font(.subheadline.weight(.heavy))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
                 }
                 .buttonStyle(TactileActionButtonStyle(fill: theme.cardElevatedSurface, foreground: theme.primaryInk))
             }
             .padding(20)
         }
-        .presentationDetents([.fraction(0.72), .large])
+        .presentationDetents([.fraction(0.85), .large])
     }
 }

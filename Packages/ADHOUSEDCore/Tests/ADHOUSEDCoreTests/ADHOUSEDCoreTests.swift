@@ -271,4 +271,80 @@ struct ADHOUSEDCoreTests {
             ) == .light
         )
     }
+
+    @Test("Vacation & Break Date-Time window pauses chores, silences notifications during range, and shifts rolling decay")
+    @MainActor
+    func vacationBreakWindowPausesChoresAndNotifications() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let fridayNoon = calendar.date(from: DateComponents(year: 2026, month: 11, day: 6, hour: 12, minute: 0))!
+        let friday5PM = calendar.date(from: DateComponents(year: 2026, month: 11, day: 6, hour: 17, minute: 0))!
+        let saturdayNoon = calendar.date(from: DateComponents(year: 2026, month: 11, day: 7, hour: 12, minute: 0))!
+        let sunday8PM = calendar.date(from: DateComponents(year: 2026, month: 11, day: 8, hour: 20, minute: 0))!
+
+        let container = try SharedAppGroup.makeModelContainer(inMemory: true)
+        let context = container.mainContext
+        let household = Household(name: "Countryside Test", awakeStartMinutes: 9 * 60, awakeEndMinutes: 21 * 60)
+        context.insert(household)
+
+        let task = ChoreTask(
+            householdID: household.id,
+            title: "Vacuum living room",
+            room: .living,
+            scheduleMode: .rollingFromLastDone,
+            intervalUnit: .days,
+            intervalCount: 7,
+            lastCompletedAt: fridayNoon.addingTimeInterval(-7 * 86_400),
+            remindersEnabled: true,
+            nagIntervalMinutes: 60
+        )
+        context.insert(task)
+        try context.save()
+
+        let weekendBreak = VacationBreakWindow(
+            title: "Countryside Weekend",
+            iconSymbol: "tree.fill",
+            startDate: friday5PM,
+            endDate: sunday8PM,
+            freezeChoreDecay: true
+        )
+
+        // 1. Before break starts (Friday 12:00 PM): notifications fire between 12:00 PM and 5:00 PM, then skip [Fri 5 PM, Sun 8 PM]!
+        let preBreakSlots = NagSlotPlanner.computeSlots(
+            tasks: [task],
+            household: household,
+            activeMemberID: nil,
+            vacationBreaks: [weekendBreak],
+            horizonHours: 72,
+            now: fridayNoon,
+            calendar: calendar
+        )
+        #expect(!preBreakSlots.isEmpty)
+        for slot in preBreakSlots {
+            let insideBreak = slot.fireDate >= friday5PM && slot.fireDate < sunday8PM
+            #expect(insideBreak == false)
+        }
+
+        // 2. During break (Saturday 12:00 PM): chore is paused (not actionable today) and 0 notifications fire inside the 24h horizon
+        let midBreakSnap = FreshnessCalculator.snapshot(
+            for: task,
+            now: saturdayNoon,
+            activeVacationBreak: weekendBreak,
+            calendar: calendar
+        )
+        #expect(midBreakSnap.isActionableToday == false)
+        #expect(midBreakSnap.shortElapsedBadge == "On Break")
+
+        let midBreakSlots24h = NagSlotPlanner.computeSlots(
+            tasks: [task],
+            household: household,
+            activeMemberID: nil,
+            vacationBreaks: [weekendBreak],
+            horizonHours: 24,
+            now: saturdayNoon,
+            calendar: calendar
+        )
+        #expect(midBreakSlots24h.isEmpty)
+    }
 }

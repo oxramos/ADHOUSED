@@ -30,6 +30,9 @@ struct TaskEditorSheet: View {
     @State private var assignmentMode: AssignmentMode = .anyone
     @State private var selectedOwnerID: UUID? = nil
 
+    @State private var isChorePausedUntilDate: Bool = false
+    @State private var chorePausedUntil: Date = Date.now.addingTimeInterval(2 * 86_400)
+
     private let quickIcons = [
         "sparkles", "dishwasher.fill", "washer.fill", "bed.double.fill",
         "trash.fill", "shower.fill", "pawprint.fill", "leaf.fill",
@@ -53,6 +56,7 @@ struct TaskEditorSheet: View {
                             householdAssignmentCard
                         }
                         if let existingTask {
+                            singleChorePauseCard
                             archiveDeleteCard(existingTask)
                         }
                     }
@@ -393,6 +397,38 @@ struct TaskEditorSheet: View {
         .adhousedCard()
     }
 
+    private var singleChorePauseCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("PAUSE THIS CHORE (VACATION / BREAK)")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(theme.warmingColor)
+
+            Toggle(isOn: $isChorePausedUntilDate) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pause Chore & Alerts Until Date & Time")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(theme.primaryInk)
+                    Text("Silences notifications for this chore without deleting it")
+                        .font(.caption2)
+                        .foregroundStyle(theme.secondaryInk)
+                }
+            }
+            .tint(theme.warmingColor)
+
+            if isChorePausedUntilDate {
+                DatePicker(
+                    "Resume At",
+                    selection: $chorePausedUntil,
+                    in: Date.now.addingTimeInterval(600)...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .font(.subheadline.weight(.bold))
+            }
+        }
+        .padding(15)
+        .adhousedCard(highlightTint: isChorePausedUntilDate ? theme.warmingColor : nil)
+    }
+
     private func archiveDeleteCard(_ task: ChoreTask) -> some View {
         Button(role: .destructive) {
             task.isArchived = true
@@ -431,6 +467,13 @@ struct TaskEditorSheet: View {
         alarmCutoffHour = max(12, min(23, t.alarmCutoffMinutes / 60))
         assignmentMode = t.assignmentMode
         selectedOwnerID = t.assignedMemberIDs.first ?? members.first?.id
+        if let paused = t.pausedUntil, paused > .now {
+            isChorePausedUntilDate = true
+            chorePausedUntil = paused
+        } else {
+            isChorePausedUntilDate = false
+            chorePausedUntil = Date.now.addingTimeInterval(2 * 86_400)
+        }
     }
 
     private func saveTask() {
@@ -468,6 +511,8 @@ struct TaskEditorSheet: View {
             task.alarmCutoffMinutes = alarmCutoffHour * 60
             task.assignmentMode = assignmentMode
             task.assignedMemberIDs = assignedIDs
+            task.pausedUntil = isChorePausedUntilDate ? chorePausedUntil : nil
+            task.deferredUntilDate = isChorePausedUntilDate ? chorePausedUntil : nil
             task.updatedAt = .now
         } else {
             let newTask = ChoreTask(

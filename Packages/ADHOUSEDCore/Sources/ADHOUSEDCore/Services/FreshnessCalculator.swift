@@ -59,10 +59,20 @@ public enum FreshnessCalculator {
     public static func snapshot(
         for task: ChoreTask,
         now: Date = .now,
+        activeVacationBreak: VacationBreakWindow? = nil,
         calendar: Calendar = .current
     ) -> TaskFreshnessSnapshot {
-        let startOfToday = calendar.startOfDay(for: now)
-        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
+        let resolvedBreak = activeVacationBreak ?? ADHOUSEDPreferences.shared.activeVacationBreak(at: now)
+        let isOnBreak = resolvedBreak?.isActive(at: now) == true
+        let evaluationDate: Date = {
+            if let brk = resolvedBreak, brk.isActive(at: now), brk.freezeChoreDecay {
+                return min(now, brk.startDate)
+            }
+            return now
+        }()
+
+        let startOfToday = calendar.startOfDay(for: evaluationDate)
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? evaluationDate
 
         let deferredPastToday: Bool
         if let deferredUntil = task.deferredUntilDate, deferredUntil >= endOfToday {
@@ -71,25 +81,65 @@ public enum FreshnessCalculator {
             deferredPastToday = false
         }
 
+        let baseSnapshot: TaskFreshnessSnapshot
         switch task.scheduleMode {
         case .rollingFromLastDone:
-            return rollingSnapshot(
+            baseSnapshot = rollingSnapshot(
                 for: task,
-                now: now,
+                now: evaluationDate,
                 endOfToday: endOfToday,
                 deferredPastToday: deferredPastToday,
                 calendar: calendar
             )
         case .fixedCalendar:
-            return fixedCalendarSnapshot(
+            baseSnapshot = fixedCalendarSnapshot(
                 for: task,
-                now: now,
+                now: evaluationDate,
                 startOfToday: startOfToday,
                 endOfToday: endOfToday,
                 deferredPastToday: deferredPastToday,
                 calendar: calendar
             )
         }
+
+        // 1. Active Household Vacation / Break Mode pauses chore urgency & notifications
+        if isOnBreak, let brk = resolvedBreak {
+            let resumeText = formatPauseResumeText(until: brk.endDate, now: now, calendar: calendar)
+            return TaskFreshnessSnapshot(
+                batteryFill: max(0.36, baseSnapshot.batteryFill),
+                rawFreshnessRatio: baseSnapshot.rawFreshnessRatio,
+                stage: .warming,
+                dueDate: max(baseSnapshot.dueDate, brk.endDate),
+                isActionableToday: false,
+                isDeferredPastToday: true,
+                cadenceSummary: "⏸ \(brk.title) · until \(resumeText)",
+                shortElapsedBadge: "On Break"
+            )
+        }
+
+        // 2. Single-chore custom Date & Time pause
+        if let taskPause = task.pausedUntil, taskPause > now {
+            let resumeText = formatPauseResumeText(until: taskPause, now: now, calendar: calendar)
+            return TaskFreshnessSnapshot(
+                batteryFill: max(0.34, baseSnapshot.batteryFill),
+                rawFreshnessRatio: baseSnapshot.rawFreshnessRatio,
+                stage: .warming,
+                dueDate: max(baseSnapshot.dueDate, taskPause),
+                isActionableToday: false,
+                isDeferredPastToday: true,
+                cadenceSummary: "⏸ Paused until \(resumeText)",
+                shortElapsedBadge: "Paused"
+            )
+        }
+
+        return baseSnapshot
+    }
+
+    private static func formatPauseResumeText(until date: Date, now: Date, calendar: Calendar) -> String {
+        if calendar.isDate(date, inSameDayAs: now) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
     private static func rollingSnapshot(

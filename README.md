@@ -12,7 +12,7 @@ ADHOUSED is a native iOS (`Swift 6` / `SwiftUI` / `SwiftData` / `WidgetKit` / `A
 - **Persistent Nagging Cadences**: Single dismissals never silently bury a due task. Choose per-task reminder cadences (**Gentle** `4h`, **Standard** `90m`, **Relentless** `30m`, or **Custom** `15m–240m`) strictly within your configured **Awake Window** (e.g., `09:00–22:00`).
 - **4-Stage Escalation Ladder**: Progresses automatically from passive awareness → standard chimes → **Time Sensitive** breakthrough notifications → optional **System Alarm (`AlarmKit`)** for hard real-world cutoffs (like trash night or pet medication).
 - **56-Slot Rolling Notification Planner**: Deterministically packs iOS's 64-notification ceiling with an 8-slot reserve for Live Activities and Undo timers, replenishing automatically on every app open or widget tap.
-- **Timed Away Pause**: 1-tap `Out of the House (1h / 3h / Tonight)` pause with automatic resume so alerts never train habituation while you're away.
+- **Vacation & Break Mode (`From Date & Time → Until Date & Time`)**: Designate any start and end Date & Time (or 1-tap presets like **🏡 Countryside Weekend**, **⛺ 3-Day Trip**, **🌴 7-Day Vacation**, **🌙 Rest of Today**, or **☕ 3 Hours**) to pause chores and silence all persistent notifications, Lock Screen Live Activities, and Cutoff Alarms while away—with automatic chore freshness decay freeze so you never return from a trip to a wall of overdue chores.
 
 ### 2. 1-Tap Home Screen, Lock Screen & StandBy Widgets (`AppIntents`)
 - **Zero-App-Open Completion**: Interactive `Button(intent: CompleteChoreTaskIntent(...))` widgets across `systemSmall`, `systemMedium`, `accessoryRectangular`, and `accessoryCircular` families.

@@ -114,31 +114,39 @@ struct SpotlightAndRoomsView: View {
     }
 
     private var calmCaughtUpCard: some View {
-        HStack(spacing: 14) {
+        let activeBreak = ADHOUSEDPreferences.shared.activeVacationBreak()
+
+        return HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(theme.freshColor.opacity(0.18))
+                    .fill((activeBreak != nil ? theme.warmingColor : theme.freshColor).opacity(0.18))
                     .frame(width: 48, height: 48)
-                Image(systemName: "checkmark.seal.fill")
+                Image(systemName: activeBreak?.iconSymbol ?? "checkmark.seal.fill")
                     .font(.title2)
-                    .foregroundStyle(theme.freshColor)
+                    .foregroundStyle(activeBreak != nil ? theme.warmingColor : theme.freshColor)
             }
             VStack(alignment: .leading, spacing: 4) {
                 SalientText(
-                    session.lowSpoonsFilterEnabled
-                        ? "Zero Low-Spoons tasks due right now!"
-                        : "Your Focus Deck is sparkling clear!",
+                    activeBreak != nil
+                        ? "Paused for \(activeBreak!.title)!"
+                        : (session.lowSpoonsFilterEnabled
+                            ? "Zero Low-Spoons tasks due right now!"
+                            : "Your Focus Deck is sparkling clear!"),
                     font: .headline.weight(.bold),
                     color: theme.primaryInk
                 )
-                Text("Everything assigned to your turn is still fresh. Browse rooms below if you feel like getting ahead.")
-                    .font(.caption)
-                    .foregroundStyle(theme.secondaryInk)
+                Text(
+                    activeBreak != nil
+                        ? "Chores and persistent alerts are paused until \(activeBreak!.endDate.formatted(date: .abbreviated, time: .shortened)). Enjoy your time away!"
+                        : "Everything assigned to your turn is still fresh. Browse rooms below if you feel like getting ahead."
+                )
+                .font(.caption)
+                .foregroundStyle(theme.secondaryInk)
             }
             Spacer(minLength: 0)
         }
         .padding(16)
-        .adhousedCard(highlightTint: theme.freshColor)
+        .adhousedCard(highlightTint: activeBreak != nil ? theme.warmingColor : theme.freshColor)
     }
 
     // MARK: - Room / Zone Bento Switcher

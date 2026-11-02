@@ -23,6 +23,9 @@ public final class ReminderCoordinator {
     /// 2. Pinned Lock Screen Live Activities (`ActivityKit`) for Tier 2 & Tier 3 due tasks
     /// 3. Cutoff System Alarms (`AlarmKit`) for Tier 3 due tasks
     public func reconcileAll(in context: ModelContext, now: Date = .now) async {
+        // Apply any rolling interval shifts for completed Vacation / Break windows first
+        try? TaskActionService.reconcileElapsedVacationBreaks(in: context, now: now)
+
         let household = (try? context.fetch(FetchDescriptor<Household>()))?.first
         let members = (try? context.fetch(FetchDescriptor<HouseholdMember>())) ?? []
         let tasks = (try? context.fetch(FetchDescriptor<ChoreTask>())) ?? []
@@ -227,9 +230,12 @@ public final class ReminderCoordinator {
         }
 
         var armedCount = 0
+        let scheduledBreaks = ADHOUSEDPreferences.shared.activeOrUpcomingVacationBreaks(at: now)
+        let awakeStart = household?.awakeStartMinutes ?? 510
+        let awakeEnd = household?.awakeEndMinutes ?? 1290
         for task in eligibleTasks {
             var cutoffDate = startOfToday.addingTimeInterval(Double(task.alarmCutoffMinutes * 60))
-            if let pauseUntil = household?.awayPauseUntil, pauseUntil > cutoffDate {
+            if let pauseUntil = household?.effectivePauseEnd(at: now), pauseUntil > cutoffDate {
                 cutoffDate = pauseUntil
             }
             if let taskPause = task.pausedUntil, taskPause > cutoffDate {
@@ -239,6 +245,13 @@ public final class ReminderCoordinator {
             if cutoffDate <= now.addingTimeInterval(30) {
                 cutoffDate = cutoffDate.addingTimeInterval(86_400)
             }
+            cutoffDate = NagSlotPlanner.advancePastVacationBreaks(
+                date: cutoffDate,
+                breaks: scheduledBreaks,
+                awakeStartMinutes: awakeStart,
+                awakeEndMinutes: awakeEnd,
+                calendar: calendar
+            )
 
             let secondaryBtn = AlarmButton(
                 text: "Pause 30m",

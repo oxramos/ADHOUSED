@@ -136,11 +136,151 @@ public enum TaskActionService {
     }
 
     public static func clearAwayPause(in context: ModelContext, now: Date = .now) throws {
+        try endActiveVacationBreakEarly(in: context, now: now)
         let households = try context.fetch(FetchDescriptor<Household>())
         for household in households {
             household.awayPauseUntil = nil
             household.updatedAt = now
         }
+        try context.save()
+        awaitableReconcileAndReloadWidgets(in: context, now: now)
+    }
+
+    // MARK: - Vacation / Break Mode Management (Date & Time Range)
+
+    /// Schedules or updates a Vacation / Break mode window (`startDate` -> `endDate`), syncing with `Household`
+    /// and immediately purging/rescheduling notifications across the designated Date & Time range.
+    @discardableResult
+    public static func scheduleVacationBreak(
+        _ window: VacationBreakWindow,
+        in context: ModelContext,
+        now: Date = .now
+    ) throws -> VacationBreakWindow {
+        let prefs = ADHOUSEDPreferences.shared
+        var list = prefs.vacationBreaks.filter { $0.id != window.id && $0.endDate > now.addingTimeInterval(-60) }
+        list.append(window)
+        list.sort { $0.startDate < $1.startDate }
+        prefs.vacationBreaks = list
+
+        let households = try context.fetch(FetchDescriptor<Household>())
+        let activeEnd = prefs.activeVacationBreak(at: now)?.endDate
+        for household in households {
+            household.awayPauseUntil = activeEnd
+            household.updatedAt = now
+        }
+        try context.save()
+        awaitableReconcileAndReloadWidgets(in: context, now: now)
+        return window
+    }
+
+    public static func removeVacationBreak(
+        id: UUID,
+        in context: ModelContext,
+        now: Date = .now
+    ) throws {
+        let prefs = ADHOUSEDPreferences.shared
+        if let target = prefs.vacationBreaks.first(where: { $0.id == id }),
+           target.isActive(at: now),
+           target.freezeChoreDecay {
+            try applyBreakDecayShift(for: target, effectiveEnd: now, in: context)
+        }
+        prefs.vacationBreaks.removeAll { $0.id == id }
+
+        let households = try context.fetch(FetchDescriptor<Household>())
+        let activeEnd = prefs.activeVacationBreak(at: now)?.endDate
+        for household in households {
+            household.awayPauseUntil = activeEnd
+            household.updatedAt = now
+        }
+        try context.save()
+        awaitableReconcileAndReloadWidgets(in: context, now: now)
+    }
+
+    public static func endActiveVacationBreakEarly(
+        in context: ModelContext,
+        now: Date = .now
+    ) throws {
+        let prefs = ADHOUSEDPreferences.shared
+        let activeBreaks = prefs.vacationBreaks.filter { $0.isActive(at: now) }
+        for brk in activeBreaks where brk.freezeChoreDecay {
+            try applyBreakDecayShift(for: brk, effectiveEnd: now, in: context)
+        }
+        prefs.vacationBreaks.removeAll { $0.isActive(at: now) }
+
+        let households = try context.fetch(FetchDescriptor<Household>())
+        for household in households {
+            household.awayPauseUntil = nil
+            household.updatedAt = now
+        }
+        try context.save()
+        awaitableReconcileAndReloadWidgets(in: context, now: now)
+    }
+
+    /// Reconciles any Vacation / Break windows whose `endDate` has now passed, shifting rolling chore intervals
+    /// forward by the break duration so tasks don't pile up while away.
+    public static func reconcileElapsedVacationBreaks(
+        in context: ModelContext,
+        now: Date = .now
+    ) throws {
+        let prefs = ADHOUSEDPreferences.shared
+        var updatedList: [VacationBreakWindow] = []
+        var didModifyTasks = false
+
+        for brk in prefs.vacationBreaks {
+            if brk.endDate <= now {
+                if brk.freezeChoreDecay && brk.appliedDecayShiftSeconds <= 0 {
+                    try applyBreakDecayShift(for: brk, effectiveEnd: brk.endDate, in: context)
+                    didModifyTasks = true
+                }
+                // Drop expired breaks once reconciled
+            } else {
+                updatedList.append(brk)
+            }
+        }
+
+        if updatedList != prefs.vacationBreaks {
+            prefs.vacationBreaks = updatedList
+        }
+        if didModifyTasks {
+            try context.save()
+        }
+    }
+
+    private static func applyBreakDecayShift(
+        for breakWindow: VacationBreakWindow,
+        effectiveEnd: Date,
+        in context: ModelContext
+    ) throws {
+        let shiftSeconds = max(0, effectiveEnd.timeIntervalSince(breakWindow.startDate) - breakWindow.appliedDecayShiftSeconds)
+        guard shiftSeconds >= 60 else { return }
+
+        let tasks = try context.fetch(FetchDescriptor<ChoreTask>())
+        for task in tasks where !task.isArchived && task.scheduleMode == .rollingFromLastDone {
+            if let lastDone = task.lastCompletedAt, lastDone <= breakWindow.startDate {
+                task.lastCompletedAt = min(effectiveEnd, lastDone.addingTimeInterval(shiftSeconds))
+                task.updatedAt = effectiveEnd
+            } else if task.lastCompletedAt == nil && task.createdAt <= breakWindow.startDate {
+                task.createdAt = min(effectiveEnd, task.createdAt.addingTimeInterval(shiftSeconds))
+                task.updatedAt = effectiveEnd
+            }
+        }
+    }
+
+    public static func pauseSingleTaskUntil(
+        taskID: UUID,
+        resumeDate: Date?,
+        in context: ModelContext,
+        now: Date = .now
+    ) throws {
+        let desc = FetchDescriptor<ChoreTask>(predicate: #Predicate { $0.id == taskID })
+        guard let task = try context.fetch(desc).first else { return }
+        task.pausedUntil = resumeDate
+        if let resumeDate, resumeDate > now {
+            task.deferredUntilDate = resumeDate
+        } else {
+            task.deferredUntilDate = nil
+        }
+        task.updatedAt = now
         try context.save()
         awaitableReconcileAndReloadWidgets(in: context, now: now)
     }

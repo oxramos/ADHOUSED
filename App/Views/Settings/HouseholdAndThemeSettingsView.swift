@@ -42,6 +42,7 @@ struct HouseholdAndThemeSettingsView: View {
 
                         dualThemeSelectorSection
                         adhdVisualErgonomicsSection
+                        vacationAndBreakSection
                         awakeWindowAndTestPingSection
                         sharedHouseholdMembersSection
                         cloudShareAndBackupSection
@@ -288,6 +289,83 @@ struct HouseholdAndThemeSettingsView: View {
         }
         .padding(15)
         .adhousedCard()
+    }
+
+    // MARK: - Vacation & Break Mode Section
+
+    private var vacationAndBreakSection: some View {
+        let activeBreak = prefs.activeVacationBreak()
+        let upcomingBreak = prefs.nextUpcomingVacationBreak()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(theme.hudTag("VACATION & BREAK MODE"))
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(theme.warmingColor)
+                Spacer()
+                if activeBreak != nil {
+                    Text("ACTIVE")
+                        .font(.system(size: 9, weight: .black, design: theme.fontDesign))
+                        .foregroundStyle(Color(hex: "#111216"))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(theme.warmingColor))
+                }
+            }
+
+            if let brk = activeBreak {
+                Text("**\(brk.title)** is active (\(brk.formattedRangeSummary())). All chores and persistent reminders are paused.")
+                    .font(.caption)
+                    .foregroundStyle(theme.primaryInk)
+            } else if let upcoming = upcomingBreak {
+                Text("Scheduled **\(upcoming.title)**: \(upcoming.formattedRangeSummary())")
+                    .font(.caption)
+                    .foregroundStyle(theme.primaryInk)
+            } else {
+                Text("Heading out of town or to the countryside for the weekend? Designate a From Date & Time → Until Date & Time break to pause chores and notifications.")
+                    .font(.caption)
+                    .foregroundStyle(theme.secondaryInk)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    HapticsEngine.shared.playMechanicalTap()
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        session.presentingVacationBreakSheet = true
+                    }
+                } label: {
+                    Label(
+                        activeBreak != nil ? "Edit Break Dates" : "Configure Vacation / Break…",
+                        systemImage: "calendar.badge.clock"
+                    )
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                }
+                .buttonStyle(
+                    TactileActionButtonStyle(
+                        fill: theme.warmingColor,
+                        foreground: Color(hex: "#111216")
+                    )
+                )
+
+                if activeBreak != nil {
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        try? TaskActionService.clearAwayPause(in: modelContext)
+                    } label: {
+                        Text("I'm Back")
+                            .font(.subheadline.weight(.heavy))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 11)
+                    }
+                    .buttonStyle(TactileActionButtonStyle(fill: theme.freshColor, foreground: .white))
+                }
+            }
+        }
+        .padding(15)
+        .adhousedCard(highlightTint: activeBreak != nil ? theme.warmingColor : nil)
     }
 
     // MARK: - Awake Hours & Live Persistent Reminder Test

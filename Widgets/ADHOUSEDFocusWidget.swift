@@ -126,14 +126,25 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
         )
 
         // Prefer due or active-undo tasks; if none due and mode is pinned/room, show freshest status
+        let activeBreak = prefs.activeVacationBreak(at: referenceDate)
         let dueOnly = sorted.filter { $0.snapshot.isActionableToday || $0.task.hasActiveUndoGraceWindow(at: referenceDate) }
         let chosenSource = (dueOnly.isEmpty && (configuration.displayMode == .pinnedChore || configuration.displayMode == .roomFilter))
             ? Array(sorted.prefix(4))
             : Array(dueOnly.prefix(5))
 
-        let earliestExpiry = chosenSource
+        let nextBreakTransition: Date? = {
+            if let activeBreak {
+                return activeBreak.endDate
+            }
+            return prefs.nextUpcomingVacationBreak(at: referenceDate)?.startDate
+        }()
+
+        let earliestExpiry = (chosenSource
             .compactMap { $0.task.hasActiveUndoGraceWindow(at: referenceDate) ? $0.task.pendingUndoExpiresAt : nil }
+            + [nextBreakTransition].compactMap { $0 })
             .min()
+
+        let effectiveHeader = activeBreak != nil ? "⏸ \(activeBreak!.title.uppercased())" : header
 
         let items: [WidgetChoreRowItem] = chosenSource.map { pair in
             let task = pair.task
@@ -162,7 +173,7 @@ struct ADHOUSEDFocusProvider: AppIntentTimelineProvider {
         return (
             ADHOUSEDFocusTimelineEntry(
                 date: referenceDate,
-                headerLabel: header,
+                headerLabel: effectiveHeader,
                 items: items,
                 totalDueCount: dueOnly.count,
                 themePreset: prefs.themePreset,

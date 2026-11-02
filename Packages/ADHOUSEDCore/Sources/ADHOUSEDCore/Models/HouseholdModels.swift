@@ -484,8 +484,17 @@ public final class Household {
     }
 
     public func isCurrentlyPausedAway(at now: Date = .now) -> Bool {
+        if let activeBreak = ADHOUSEDPreferences.shared.activeVacationBreak(at: now) {
+            return activeBreak.endDate > now
+        }
         guard let awayPauseUntil else { return false }
         return awayPauseUntil > now
+    }
+
+    public func effectivePauseEnd(at now: Date = .now) -> Date? {
+        let breakEnd = ADHOUSEDPreferences.shared.activeVacationBreak(at: now)?.endDate
+        let legacyEnd = (awayPauseUntil != nil && awayPauseUntil! > now) ? awayPauseUntil : nil
+        return [breakEnd, legacyEnd].compactMap { $0 }.max()
     }
 }
 
@@ -857,6 +866,184 @@ public enum SharedAppGroup {
     }
 }
 
+// MARK: - Vacation / Break Mode Models (Date & Time Range)
+
+public enum VacationBreakPreset: String, CaseIterable, Identifiable, Sendable {
+    case countrysideWeekend
+    case longWeekend
+    case weekVacation
+    case restOfToday
+    case quickThreeHours
+    case custom
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .countrysideWeekend: return "Countryside Weekend"
+        case .longWeekend: return "Long Weekend (3d)"
+        case .weekVacation: return "1-Week Vacation"
+        case .restOfToday: return "Rest of Today"
+        case .quickThreeHours: return "Quick Break (3h)"
+        case .custom: return "Custom Dates"
+        }
+    }
+
+    public var shortChipLabel: String {
+        switch self {
+        case .countrysideWeekend: return "🏡 Weekend Away"
+        case .longWeekend: return "⛺ 3-Day Trip"
+        case .weekVacation: return "🌴 7-Day Vacation"
+        case .restOfToday: return "🌙 Rest of Today"
+        case .quickThreeHours: return "☕ 3 Hours"
+        case .custom: return "🗓️ Custom Range"
+        }
+    }
+
+    public var defaultTitle: String {
+        switch self {
+        case .countrysideWeekend: return "Countryside Weekend"
+        case .longWeekend: return "Long Weekend Trip"
+        case .weekVacation: return "Vacation Mode"
+        case .restOfToday: return "Evening Break"
+        case .quickThreeHours: return "Out of the House"
+        case .custom: return "Away Break"
+        }
+    }
+
+    public var iconSymbol: String {
+        switch self {
+        case .countrysideWeekend: return "tree.fill"
+        case .longWeekend: return "tent.fill"
+        case .weekVacation: return "suitcase.rolling.fill"
+        case .restOfToday: return "moon.stars.fill"
+        case .quickThreeHours: return "cup.and.saucer.fill"
+        case .custom: return "calendar.badge.clock"
+        }
+    }
+
+    /// Computes a smart `(startDate, endDate)` range for the preset relative to `now`.
+    public func suggestedRange(
+        from now: Date = .now,
+        awakeStartMinutes: Int = 8 * 60 + 30,
+        calendar: Calendar = .current
+    ) -> (start: Date, end: Date) {
+        let startOfToday = calendar.startOfDay(for: now)
+        switch self {
+        case .countrysideWeekend:
+            // Weekday: 1 = Sun, 2 = Mon, ..., 6 = Fri, 7 = Sat
+            let weekday = calendar.component(.weekday, from: now)
+            if weekday == 6 {
+                // Friday: start at 5:00 PM today (or now if already past 5 PM), end Sunday 8:00 PM
+                let fri5PM = startOfToday.addingTimeInterval(17 * 3600)
+                let start = now >= fri5PM ? now : fri5PM
+                let sunStart = calendar.date(byAdding: .day, value: 2, to: startOfToday) ?? startOfToday.addingTimeInterval(2 * 86_400)
+                let end = sunStart.addingTimeInterval(20 * 3600)
+                return (start, end)
+            } else if weekday == 7 {
+                // Saturday: start now, end Sunday 8:00 PM
+                let sunStart = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday.addingTimeInterval(86_400)
+                let end = sunStart.addingTimeInterval(20 * 3600)
+                return (now, end)
+            } else if weekday == 1 {
+                // Sunday: start now, end Monday 9:00 AM (or tonight 8:00 PM if still before 6 PM)
+                let sun8PM = startOfToday.addingTimeInterval(20 * 3600)
+                if now < startOfToday.addingTimeInterval(18 * 3600) {
+                    return (now, sun8PM)
+                } else {
+                    let monStart = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday.addingTimeInterval(86_400)
+                    return (now, monStart.addingTimeInterval(9 * 3600))
+                }
+            } else {
+                // Mon–Thu: default to upcoming Friday 5:00 PM -> Sunday 8:00 PM
+                let daysUntilFri = (6 - weekday + 7) % 7
+                let friStart = calendar.date(byAdding: .day, value: daysUntilFri, to: startOfToday) ?? startOfToday
+                let start = friStart.addingTimeInterval(17 * 3600)
+                let sunStart = calendar.date(byAdding: .day, value: daysUntilFri + 2, to: startOfToday) ?? friStart.addingTimeInterval(2 * 86_400)
+                let end = sunStart.addingTimeInterval(20 * 3600)
+                return (start, end)
+            }
+
+        case .longWeekend:
+            let threeDaysOut = calendar.date(byAdding: .day, value: 3, to: startOfToday) ?? now.addingTimeInterval(3 * 86_400)
+            return (now, threeDaysOut.addingTimeInterval(20 * 3600))
+
+        case .weekVacation:
+            let sevenDaysOut = calendar.date(byAdding: .day, value: 7, to: startOfToday) ?? now.addingTimeInterval(7 * 86_400)
+            return (now, sevenDaysOut.addingTimeInterval(Double(awakeStartMinutes * 60)))
+
+        case .restOfToday:
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now.addingTimeInterval(86_400)
+            return (now, tomorrow.addingTimeInterval(Double(awakeStartMinutes * 60)))
+
+        case .quickThreeHours:
+            return (now, now.addingTimeInterval(3 * 3600))
+
+        case .custom:
+            let twoDaysOut = calendar.date(byAdding: .day, value: 2, to: startOfToday) ?? now.addingTimeInterval(2 * 86_400)
+            return (now, twoDaysOut.addingTimeInterval(20 * 3600))
+        }
+    }
+}
+
+public struct VacationBreakWindow: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var title: String
+    public var iconSymbol: String
+    public var startDate: Date
+    public var endDate: Date
+    /// When true, chore freshness decay is frozen during `[startDate, endDate]` and rolling intervals shift forward so tasks don't pile up while away.
+    public var freezeChoreDecay: Bool
+    /// Tracks how many seconds of rolling interval grace shift have already been applied to tasks for this break window.
+    public var appliedDecayShiftSeconds: Double
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        title: String = "Countryside Weekend",
+        iconSymbol: String = "tree.fill",
+        startDate: Date,
+        endDate: Date,
+        freezeChoreDecay: Bool = true,
+        appliedDecayShiftSeconds: Double = 0,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.title = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Away Break" : title
+        self.iconSymbol = iconSymbol
+        self.startDate = startDate
+        self.endDate = max(startDate.addingTimeInterval(300), endDate)
+        self.freezeChoreDecay = freezeChoreDecay
+        self.appliedDecayShiftSeconds = appliedDecayShiftSeconds
+        self.createdAt = createdAt
+    }
+
+    public func isActive(at date: Date = .now) -> Bool {
+        date >= startDate && date < endDate
+    }
+
+    public func isUpcoming(at date: Date = .now) -> Bool {
+        startDate > date && endDate > startDate
+    }
+
+    public func contains(_ date: Date) -> Bool {
+        date >= startDate && date < endDate
+    }
+
+    public var durationHours: Int {
+        max(1, Int(round(endDate.timeIntervalSince(startDate) / 3600.0)))
+    }
+
+    public func formattedRangeSummary(now: Date = .now, calendar: Calendar = .current) -> String {
+        let sameDay = calendar.isDate(startDate, inSameDayAs: endDate)
+        let startStr = startDate.formatted(date: .abbreviated, time: .shortened)
+        let endStr = sameDay
+            ? endDate.formatted(date: .omitted, time: .shortened)
+            : endDate.formatted(date: .abbreviated, time: .shortened)
+        return "\(startStr) → \(endStr)"
+    }
+}
+
 /// Shared preferences synchronized instantaneously between App, Widgets, and Live Activities.
 @Observable
 public final class ADHOUSEDPreferences: @unchecked Sendable {
@@ -872,6 +1059,7 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         static let hapticsEnabled = "adhoused.hapticsEnabled"
         static let activeMemberID = "adhoused.activeMemberID"
         static let hasCompletedOnboarding = "adhoused.hasCompletedOnboarding"
+        static let vacationBreaksJSON = "adhoused.vacationBreaksJSON"
     }
 
     public var themePreset: ThemePreset {
@@ -902,6 +1090,14 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         didSet { defaults.set(hasCompletedOnboarding, forKey: Keys.hasCompletedOnboarding) }
     }
 
+    public var vacationBreaks: [VacationBreakWindow] {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(vacationBreaks) {
+                defaults.set(encoded, forKey: Keys.vacationBreaksJSON)
+            }
+        }
+    }
+
     public init(defaults: UserDefaults = SharedAppGroup.sharedUserDefaults) {
         self.defaults = defaults
         self.themePreset = ThemePreset(rawValue: defaults.string(forKey: Keys.themePreset) ?? "") ?? .warmTactileBento
@@ -915,6 +1111,32 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
             self.activeMemberID = nil
         }
         self.hasCompletedOnboarding = defaults.bool(forKey: Keys.hasCompletedOnboarding)
+        if let data = defaults.data(forKey: Keys.vacationBreaksJSON),
+           let decoded = try? JSONDecoder().decode([VacationBreakWindow].self, from: data) {
+            self.vacationBreaks = decoded
+        } else {
+            self.vacationBreaks = []
+        }
+    }
+
+    public func activeVacationBreak(at date: Date = .now) -> VacationBreakWindow? {
+        vacationBreaks
+            .filter { $0.isActive(at: date) }
+            .sorted { $0.endDate > $1.endDate }
+            .first
+    }
+
+    public func nextUpcomingVacationBreak(at date: Date = .now) -> VacationBreakWindow? {
+        vacationBreaks
+            .filter { $0.isUpcoming(at: date) }
+            .sorted { $0.startDate < $1.startDate }
+            .first
+    }
+
+    public func activeOrUpcomingVacationBreaks(at date: Date = .now) -> [VacationBreakWindow] {
+        vacationBreaks
+            .filter { $0.endDate > date }
+            .sorted { $0.startDate < $1.startDate }
     }
 
     public func selectThemePreset(_ preset: ThemePreset) {
@@ -940,5 +1162,9 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
             activeMemberID = UUID(uuidString: str)
         }
         hasCompletedOnboarding = defaults.bool(forKey: Keys.hasCompletedOnboarding)
+        if let data = defaults.data(forKey: Keys.vacationBreaksJSON),
+           let decoded = try? JSONDecoder().decode([VacationBreakWindow].self, from: data) {
+            vacationBreaks = decoded
+        }
     }
 }
