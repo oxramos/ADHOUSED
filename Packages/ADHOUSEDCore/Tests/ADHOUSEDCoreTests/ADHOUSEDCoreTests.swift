@@ -301,8 +301,30 @@ struct ADHOUSEDCoreTests {
 
         #expect(ChoreIconCatalog.mappedOmarchyGlyphKey(for: "dishwasher.fill") == "dishes")
         #expect(ChoreIconCatalog.mappedOmarchyGlyphKey(for: "omarchy:ghost") == "ghost")
+        #expect(ChoreIconCatalog.mappedOmarchyGlyphKey(for: "omarchy:prism") == "prism")
         #expect(ChoreIconCatalog.fallbackSystemSymbol(for: "omarchy:cat") == "cat.fill")
         #expect(ChoreIconCatalog.fallbackSystemSymbol(for: "emoji:🪴") == "sparkles")
+    }
+
+    @Test("Bundled Omarchy display font and JetBrains Mono register cleanly and sanitize smart punctuation")
+    func bundledOmarchyAndJetBrainsFontsRegister() {
+        ADHOUSEDFontRegistry.registerFontsIfNeeded()
+        #expect(ADHOUSEDFontRegistry.isFontAvailable(ADHOUSEDFontRegistry.omarchyDisplayPostScript) == true)
+        #expect(ADHOUSEDFontRegistry.isFontAvailable(ADHOUSEDFontRegistry.jetBrainsRegular) == true)
+        #expect(ADHOUSEDFontRegistry.isFontAvailable(ADHOUSEDFontRegistry.jetBrainsBold) == true)
+        #expect(ADHOUSEDFontRegistry.isFontAvailable(ADHOUSEDFontRegistry.jetBrainsExtraBold) == true)
+
+        let sanitized = ADHOUSEDFontRegistry.sanitizeForOmarchyDisplay("Big Boss’s Chores — Quiet!")
+        #expect(sanitized == "BIG BOSS'S CHORES - QUIET!")
+
+        let suiteName = "adhoused.fonttest.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = ADHOUSEDPreferences(defaults: defaults)
+        #expect(prefs.displayLetteringStyle == .autoTheme)
+        prefs.displayLetteringStyle = .omarchyBlock
+        #expect(prefs.displayLetteringStyle == .omarchyBlock)
     }
 
     @Test("Custom Catalog items persist, adopt without overwriting household name, and round-trip in JSON backup")

@@ -811,7 +811,7 @@ public extension EnvironmentValues {
     }
 }
 
-// MARK: - Card & Tactile Button Modifiers
+// MARK: - Dimensional Card & Tactile Gradient Button Modifiers
 
 public struct ThemedCardModifier: ViewModifier {
     @Environment(\.adhousedTheme) private var theme
@@ -840,11 +840,35 @@ public struct ThemedCardModifier: ViewModifier {
                                 y: compact ? 2.5 : theme.hardShadowOffset
                             )
                     }
+
+                    // Base card surface + subtle top-lit elevation gradient
                     shape
                         .fill(theme.cardSurface)
+                    shape
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(theme.isDark ? 0.045 : 0.55),
+                                    Color.clear,
+                                    Color.black.opacity(theme.isDark ? 0.14 : 0.015)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+
                     if let highlightTint, !theme.usesHardOffsetShadow {
                         shape
-                            .fill(highlightTint.opacity(theme.isTerminalHUD ? (theme.isDark ? 0.06 : 0.04) : (theme.isDark ? 0.08 : 0.05)))
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        highlightTint.opacity(theme.isTerminalHUD ? (theme.isDark ? 0.10 : 0.06) : (theme.isDark ? 0.11 : 0.07)),
+                                        highlightTint.opacity(0.015)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                     }
                 }
             }
@@ -859,18 +883,40 @@ public struct ThemedCardModifier: ViewModifier {
                             ),
                             lineWidth: compact ? 1.35 : 1.65
                         )
-                } else {
+                } else if theme.usesHardOffsetShadow {
                     shape
-                        .strokeBorder(
-                            highlightTint != nil && !theme.usesHardOffsetShadow
-                                ? (highlightTint ?? theme.borderInk).opacity(0.45)
-                                : theme.borderInk,
-                            lineWidth: theme.cardBorderWidth
-                        )
+                        .strokeBorder(theme.borderInk, lineWidth: theme.cardBorderWidth)
+                } else {
+                    ZStack {
+                        shape
+                            .strokeBorder(
+                                highlightTint != nil
+                                    ? (highlightTint ?? theme.borderInk).opacity(0.48)
+                                    : theme.borderInk,
+                                lineWidth: theme.cardBorderWidth
+                            )
+                        // Subtle top-lit specular rim
+                        shape
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(theme.isDark ? 0.10 : 0.65),
+                                        Color.clear
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                ),
+                                lineWidth: 0.8
+                            )
+                    }
                 }
             }
             .shadow(
-                color: (theme.usesHardOffsetShadow || theme.isTerminalHUD) ? .clear : theme.hardShadowColor,
+                color: theme.usesHardOffsetShadow
+                    ? .clear
+                    : (theme.isTerminalHUD
+                        ? Color.black.opacity(theme.isDark ? 0.36 : 0.06)
+                        : theme.hardShadowColor),
                 radius: compact ? 5 : 10,
                 x: 0,
                 y: compact ? 2 : 4
@@ -903,6 +949,12 @@ public struct TactileActionButtonStyle: ButtonStyle {
 
         configuration.label
             .foregroundStyle(foreground)
+            .shadow(
+                color: .black.opacity(foreground == .white ? 0.18 : 0.0),
+                radius: 0.8,
+                x: 0,
+                y: 0.8
+            )
             .background {
                 ZStack {
                     if theme.usesHardOffsetShadow {
@@ -910,7 +962,20 @@ public struct TactileActionButtonStyle: ButtonStyle {
                             .fill(theme.borderInk)
                             .offset(x: pressed ? 0.5 : 2.8, y: pressed ? 0.5 : 2.8)
                     }
-                    shape.fill(fill.opacity(theme.isTerminalHUD && pressed ? 0.82 : 1.0))
+                    shape.fill(fill.opacity(theme.isTerminalHUD && pressed ? 0.84 : 1.0))
+
+                    // Burnished top-lit sheen (matches Omarchy Quattro 4.x Interactive States)
+                    shape.fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(theme.isDark ? 0.16 : 0.22),
+                                Color.clear,
+                                Color.black.opacity(theme.isDark ? 0.16 : 0.06)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                 }
             }
             .overlay {
@@ -927,8 +992,30 @@ public struct TactileActionButtonStyle: ButtonStyle {
                             lineWidth: 1.6
                         )
                     } else {
-                        shape.strokeBorder(theme.borderInk.opacity(0.85), lineWidth: 1.0)
+                        ZStack {
+                            shape.strokeBorder(theme.borderInk.opacity(0.75), lineWidth: 1.0)
+                            shape.strokeBorder(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.28), Color.clear],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.9
+                            )
+                        }
                     }
+                } else {
+                    shape.strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(theme.isDark ? 0.18 : 0.45),
+                                theme.borderInk.opacity(0.55)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.9
+                    )
                 }
             }
             .offset(

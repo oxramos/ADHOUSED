@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Visual Time-Blindness Gauges (Spotlight Bar & Stream Battery Cell)
+// MARK: - Visual Time-Blindness Gauges (Luminous Spotlight Bar & Stream Battery Cell)
 
 public struct CompactFreshnessBar: View {
     @Environment(\.adhousedTheme) private var theme
@@ -15,14 +15,33 @@ public struct CompactFreshnessBar: View {
     public var body: some View {
         let barColor = theme.color(for: snapshot.stage)
         let visibleFill = max(0.08, min(1.0, snapshot.batteryFill))
-        let radius = theme.isTerminalHUD ? 3.0 : height / 2.0
+        let radius = theme.isTerminalHUD ? 3.5 : height / 2.0
 
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(theme.canvasSecondary)
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(barColor)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                barColor.opacity(0.84),
+                                barColor
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.28), Color.clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    }
                     .frame(width: max(height * 1.4, geo.size.width * visibleFill))
             }
             .overlay {
@@ -31,7 +50,7 @@ public struct CompactFreshnessBar: View {
                         .strokeBorder(theme.borderInk.opacity(0.85), lineWidth: 1.5)
                 } else if theme.isTerminalHUD {
                     RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .strokeBorder(theme.borderInk.opacity(0.75), lineWidth: 1.0)
+                        .strokeBorder(theme.borderInk.opacity(0.75), lineWidth: 0.9)
                 }
             }
         }
@@ -84,7 +103,6 @@ public struct LargeBatteryCellGauge: View {
                     )
             )
 
-            // Battery positive terminal nub
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(snapshot.isActionableToday ? activeColor : theme.borderInk)
                 .frame(width: 3.5, height: 10)

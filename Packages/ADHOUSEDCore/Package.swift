@@ -16,6 +16,9 @@ let package = Package(
     targets: [
         .target(
             name: "ADHOUSEDCore",
+            resources: [
+                .process("Resources")
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]

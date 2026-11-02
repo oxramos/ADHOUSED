@@ -244,6 +244,7 @@ struct ADHOUSEDFocusWidgetView: View {
     }
 
     var body: some View {
+        let _ = ADHOUSEDFontRegistry.registerFontsIfNeeded()
         Group {
             switch family {
             case .systemSmall:

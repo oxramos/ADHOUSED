@@ -141,22 +141,30 @@ struct ThemeColorCustomizerSheet: View {
                 }
             }
 
-            // Sample Chore Card Preview
-            VStack(alignment: .leading, spacing: 10) {
+            // Live Hero Lettering + Sample Chore Card Preview
+            VStack(alignment: .leading, spacing: 11) {
+                DimensionalHeroTitleView(
+                    title: preset.shortLabel,
+                    subtitle: "Live typography & icon preview",
+                    lineLimit: 1
+                )
+
+                Divider()
+
                 HStack(spacing: 12) {
                     ChoreIconBadgeView(
                         iconSymbol: preset.isOmarchyQuattroStyle ? "omarchy:dishes" : "dishwasher.fill",
                         tint: p.accentPrimary,
-                        size: 40
+                        size: 42
                     )
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Load or unload dishwasher")
-                            .font(.subheadline.weight(.heavy))
+                            .themeFont(.cardTitle, in: p)
                             .foregroundStyle(p.primaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("Kitchen · ~5 min · Easy · Reminds every 1 hr")
-                            .font(.caption)
+                            .themeFont(.caption, in: p)
                             .foregroundStyle(p.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -434,6 +442,19 @@ struct ThemeColorCustomizerSheet: View {
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: draft.fontStyle) { _, _ in persistDraft() }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Header Display Lettering")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(previewTokens.primaryInk)
+
+                Picker("Header Lettering", selection: $prefs.displayLetteringStyle) {
+                    ForEach(DisplayLetteringStyle.allCases) { opt in
+                        Text(opt.title).tag(opt)
+                    }
+                }
+                .pickerStyle(.segmented)
             }
 
             Divider()

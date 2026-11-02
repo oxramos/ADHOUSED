@@ -49,19 +49,19 @@ struct ChoreTaskCardView: View {
             ChoreIconBadgeView(
                 iconSymbol: task.iconSymbol,
                 tint: roomColor,
-                size: 38
+                size: 40
             )
 
             VStack(alignment: .leading, spacing: 3) {
                 SalientText(
                     task.title,
-                    font: .body.weight(.semibold),
+                    style: .cardTitle,
                     color: theme.primaryInk,
                     lineLimit: nil
                 )
 
                 Text(quietSubtitleLine)
-                    .font(.caption)
+                    .themeFont(.caption, in: theme)
                     .foregroundStyle(theme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -73,25 +73,34 @@ struct ChoreTaskCardView: View {
                 choreContextMenuItems
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(theme.secondaryInk.opacity(0.75))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(theme.secondaryInk.opacity(0.8))
                     .frame(width: 28, height: 34)
                     .contentShape(Rectangle())
             }
+            .fixedSize()
 
             Button {
                 session.triggerCompletionWithToast(task: task, in: modelContext)
             } label: {
                 Image(systemName: snapshot.isActionableToday ? "checkmark" : "arrow.clockwise")
-                    .font(.subheadline.weight(.bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(snapshot.isActionableToday ? theme.onAccentPrimary : theme.primaryInk)
                     .frame(width: 40, height: 40)
                     .background(
                         Circle()
                             .fill(snapshot.isActionableToday ? theme.accentPrimary : theme.canvasSecondary)
                     )
+                    .overlay {
+                        Circle()
+                            .strokeBorder(
+                                snapshot.isActionableToday ? Color.white.opacity(0.24) : theme.borderInk,
+                                lineWidth: 0.9
+                            )
+                    }
             }
             .buttonStyle(.plain)
+            .fixedSize()
             .accessibilityLabel("Mark \(task.title) done")
         }
         .padding(.horizontal, 14)
@@ -107,14 +116,14 @@ struct ChoreTaskCardView: View {
         return parts.joined(separator: " · ")
     }
 
-    // MARK: - 2. Standard Focus & Battery Card (Zero Truncation + Wrapping Chips)
+    // MARK: - 2. Standard Focus & Battery Card (Dimensional Depth + Width-Normalized Type)
 
     private var standardCardBody: some View {
         let stageColor = theme.color(for: snapshot.stage)
         let roomColor = theme.roomAccent(for: task.room)
 
         return VStack(alignment: .leading, spacing: 12) {
-            // Top Row: Themed / Omarchy Icon + Full Wrapping Title + 1-Tap Done Button
+            // Top Row: Stylized Vector/Duotone Icon + Dimensional Kicker + Wrapping Title + 1-Tap Done
             HStack(alignment: .top, spacing: 12) {
                 ChoreIconBadgeView(
                     iconSymbol: task.iconSymbol,
@@ -122,30 +131,42 @@ struct ChoreTaskCardView: View {
                     size: 46
                 )
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 5) {
                         Text(task.room.shortTitle.uppercased())
-                            .font(.system(size: 10, weight: .heavy, design: theme.fontDesign))
-                            .tracking(0.6)
+                            .themeFont(.microTag, in: theme)
                             .foregroundStyle(roomColor)
+                            .padding(.horizontal, 6.5)
+                            .padding(.vertical, 2.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 4 : 6, style: .continuous)
+                                    .fill(roomColor.opacity(theme.isDark ? 0.16 : 0.11))
+                            )
+                            .fixedSize(horizontal: true, vertical: false)
 
                         if snapshot.isActionableToday {
-                            Text("· \(snapshot.stage.label.uppercased())")
-                                .font(.system(size: 10, weight: .heavy, design: theme.fontDesign))
-                                .tracking(0.5)
+                            Text(snapshot.stage.label.uppercased())
+                                .themeFont(.microTag, in: theme)
                                 .foregroundStyle(stageColor)
+                                .padding(.horizontal, 6.5)
+                                .padding(.vertical, 2.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 4 : 6, style: .continuous)
+                                        .fill(stageColor.opacity(theme.isDark ? 0.16 : 0.11))
+                                )
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                     }
 
                     SalientText(
                         task.title,
-                        font: .headline.weight(.bold),
+                        style: .cardTitle,
                         color: theme.primaryInk,
                         lineLimit: nil
                     )
 
                     Text(attributionAndCadenceLine)
-                        .font(.caption.weight(.medium))
+                        .themeFont(.caption, in: theme)
                         .foregroundStyle(theme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -153,15 +174,16 @@ struct ChoreTaskCardView: View {
 
                 Spacer(minLength: 4)
 
-                // Tactile 1-Tap Complete Button
+                // Tactile 1-Tap Complete Button (Fixed 50×50 so never squeezed)
                 Button {
                     session.triggerCompletionWithToast(task: task, in: modelContext)
                 } label: {
                     VStack(spacing: 2) {
                         Image(systemName: snapshot.isActionableToday ? "checkmark" : "arrow.clockwise")
-                            .font(.headline.weight(.black))
+                            .font(.system(size: 15, weight: .black))
                         Text(snapshot.isActionableToday ? "Done" : "Log")
-                            .font(.system(size: 10, weight: .heavy, design: theme.fontDesign))
+                            .themeFont(.microTag, in: theme)
+                            .lineLimit(1)
                     }
                     .frame(width: 50, height: 50)
                 }
@@ -172,10 +194,11 @@ struct ChoreTaskCardView: View {
                         cornerRadius: theme.isTerminalHUD ? 8 : 14
                     )
                 )
+                .fixedSize()
                 .accessibilityLabel("Mark \(task.title) done")
             }
 
-            // Middle Row: Progress / Freshness Bar
+            // Middle Row: Luminous Progress / Freshness Bar
             switch displayStyle {
             case .spotlightCard, .quietMinimalRow:
                 CompactFreshnessBar(snapshot: snapshot, height: 8)
@@ -184,10 +207,10 @@ struct ChoreTaskCardView: View {
                     LargeBatteryCellGauge(snapshot: snapshot)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(Int(round(snapshot.batteryFill * 100)))% Charged")
-                            .font(.caption.weight(.bold))
+                            .themeFont(.captionStrong, in: theme)
                             .foregroundStyle(stageColor)
                         Text(snapshot.cadenceSummary)
-                            .font(.caption2)
+                            .themeFont(.caption, in: theme)
                             .foregroundStyle(theme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -199,10 +222,10 @@ struct ChoreTaskCardView: View {
             if task.deferralCount >= 2 && snapshot.isActionableToday {
                 HStack(spacing: 8) {
                     Image(systemName: "timer")
-                        .font(.caption.weight(.bold))
+                        .font(.system(size: 11.5, weight: .bold))
                         .foregroundStyle(theme.warmingColor)
                     Text("Skipped \(task.deferralCount) times — try just 2 minutes?")
-                        .font(.caption2.weight(.semibold))
+                        .themeFont(.captionStrong, in: theme)
                         .foregroundStyle(theme.primaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 4)
@@ -211,7 +234,8 @@ struct ChoreTaskCardView: View {
                         session.presentingSprintSheetForTask = task
                     } label: {
                         Text("2m Timer")
-                            .font(.caption2.weight(.heavy))
+                            .themeFont(.microTag, in: theme)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
                     }
@@ -260,9 +284,10 @@ struct ChoreTaskCardView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "timer")
+                                .font(.system(size: 10.5, weight: .bold))
                             Text("\(task.sprintDurationMinutes)m")
+                                .themeFont(.microTag, in: theme)
                         }
-                        .font(.caption2.weight(.heavy))
                         .foregroundStyle(theme.primaryInk)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 6)
@@ -270,18 +295,25 @@ struct ChoreTaskCardView: View {
                             RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 6 : 99, style: .continuous)
                                 .fill(theme.canvasSecondary)
                         )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 6 : 99, style: .continuous)
+                                .strokeBorder(theme.borderInk.opacity(0.7), lineWidth: 0.8)
+                        }
                     }
                     .buttonStyle(.plain)
+                    .fixedSize(horizontal: true, vertical: false)
                     .accessibilityLabel("Start \(task.sprintDurationMinutes) minute focus timer")
 
                     Menu {
                         choreContextMenuItems
                     } label: {
                         Image(systemName: "ellipsis.circle.fill")
-                            .font(.title3)
+                            .font(.system(size: 20))
                             .foregroundStyle(theme.secondaryInk)
                     }
+                    .fixedSize()
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
         .padding(15)
@@ -362,21 +394,19 @@ struct ChoreTaskCardView: View {
             Image(systemName: icon)
                 .font(.system(size: 9.5, weight: .bold))
             Text(text)
-                .font(.system(size: theme.isTerminalHUD ? 10.5 : 11, weight: .semibold, design: theme.fontDesign))
+                .themeFont(.captionStrong, in: theme)
                 .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 8.5)
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: chipRadius, style: .continuous)
                 .fill(tint.opacity(theme.isDark ? 0.17 : 0.11))
         )
         .overlay {
-            if theme.isTerminalHUD {
-                RoundedRectangle(cornerRadius: chipRadius, style: .continuous)
-                    .strokeBorder(tint.opacity(0.30), lineWidth: 0.9)
-            }
+            RoundedRectangle(cornerRadius: chipRadius, style: .continuous)
+                .strokeBorder(tint.opacity(theme.isTerminalHUD ? 0.30 : 0.18), lineWidth: 0.85)
         }
     }
 }

@@ -184,8 +184,26 @@ struct HouseholdAndThemeSettingsView: View {
             .tint(theme.accentPrimary)
 
             VStack(alignment: .leading, spacing: 6) {
+                Text("Header Display Lettering")
+                    .themeFont(.captionStrong, in: theme)
+                    .foregroundStyle(theme.primaryInk)
+
+                Picker("Header Lettering", selection: $prefs.displayLetteringStyle) {
+                    ForEach(DisplayLetteringStyle.allCases) { styleOpt in
+                        Text(styleOpt.title).tag(styleOpt)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(prefs.displayLetteringStyle.subtitle)
+                    .themeFont(.caption, in: theme)
+                    .foregroundStyle(theme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Standard Dashboard Layout")
-                    .font(.caption.weight(.bold))
+                    .themeFont(.captionStrong, in: theme)
                     .foregroundStyle(theme.primaryInk)
 
                 Picker("Layout", selection: $prefs.layoutMode) {
@@ -323,15 +341,18 @@ struct HouseholdAndThemeSettingsView: View {
                                 .foregroundStyle(theme.primaryInk)
 
                             if preset.isOmarchyQuattroStyle {
-                                Text("OMARCHY")
-                                    .font(.system(size: 8, weight: .black, design: .monospaced))
-                                    .foregroundStyle(theme.accentPrimary)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(theme.accentPrimary.opacity(0.15))
-                                    )
+                                OmarchyWordmarkBadge(
+                                    text: "OMARCHY",
+                                    fontSize: 7.5,
+                                    gradientColors: [theme.accentPrimary, theme.accentSecondary],
+                                    isDark: theme.isDark
+                                )
+                                .padding(.horizontal, 5.5)
+                                .padding(.vertical, 2.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(theme.accentPrimary.opacity(0.14))
+                                )
                             }
 
                             if hasCustomColors {
@@ -412,31 +433,35 @@ struct HouseholdAndThemeSettingsView: View {
 
         return ZStack {
             if preset.isOmarchyQuattroStyle {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(sample.canvasBackground)
                     .frame(width: 48, height: 48)
                     .overlay(
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 3) {
                                 Circle().fill(sample.dueNowColor).frame(width: 4.5, height: 4.5)
                                 Circle().fill(sample.warmingColor).frame(width: 4.5, height: 4.5)
                                 Circle().fill(sample.freshColor).frame(width: 4.5, height: 4.5)
                                 Spacer()
                             }
-                            OmarchyPixelGlyphView(glyphKey: "arch", color: sample.accentPrimary, pixelSize: 1.45)
+                            OmarchyPrismEmblemView(
+                                primary: sample.accentPrimary,
+                                secondary: sample.accentSecondary,
+                                height: 11.5
+                            )
                             HStack(spacing: 3) {
                                 RoundedRectangle(cornerRadius: 2)
                                     .fill(sample.accentPrimary)
-                                    .frame(width: 16, height: 4)
+                                    .frame(width: 17, height: 4)
                                 RoundedRectangle(cornerRadius: 2)
                                     .fill(sample.accentSecondary)
-                                    .frame(width: 12, height: 4)
+                                    .frame(width: 11, height: 4)
                             }
                         }
-                        .padding(6)
+                        .padding(6.5)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .strokeBorder(
                                 LinearGradient(
                                     colors: sample.focusGradientColors,
@@ -486,8 +511,8 @@ struct HouseholdAndThemeSettingsView: View {
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(theme.secondaryInk)
 
-            Text("Choose how chore icons render across your rooms. **Match Theme** automatically switches to custom 11×11 pixel HUD icons on Omarchy themes and thin minimal strokes on Quiet themes.")
-                .font(.caption2)
+            Text("Choose how chore icons render across your rooms. **Match Theme** automatically uses sleek Omarchy geometric vector glyphs on Omarchy themes, fine architectural lines on Quiet themes, and duotone glass medallions elsewhere.")
+                .themeFont(.caption, in: theme)
                 .foregroundStyle(theme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -559,10 +584,10 @@ struct HouseholdAndThemeSettingsView: View {
                                             .fill(Color(hex: option.previewBg))
                                             .frame(width: 52, height: 52)
                                             .overlay {
-                                                OmarchyPixelGlyphView(
-                                                    glyphKey: option.iconName == nil ? "spark" : "arch",
-                                                    color: Color(hex: option.previewAccent),
-                                                    pixelSize: 2.3
+                                                StylizedVectorGlyphView(
+                                                    glyphKey: option.iconName == nil ? "spark" : (option.iconName == "AppIconQuietLinen" ? "plant" : "prism"),
+                                                    primaryColor: Color(hex: option.previewAccent),
+                                                    glyphSize: 28
                                                 )
                                             }
                                             .overlay {

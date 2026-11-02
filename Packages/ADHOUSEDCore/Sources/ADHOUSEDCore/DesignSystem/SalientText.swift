@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-// MARK: - High-Salience / Bionic Reading Formatter & View
+// MARK: - High-Salience / Bionic Reading Formatter & Dimensional Text View
 
 public enum SalientTextFormatter {
     /// Generates an `AttributedString` where the leading fixation stem (~40% of letters) of each word
@@ -51,6 +51,7 @@ public struct SalientText: View {
     @Environment(\.adhousedTheme) private var theme
     public let text: String
     public var bionicEnabled: Bool?
+    public var style: ThemeTextStyle?
     public var font: Font
     public var color: Color?
     public var lineLimit: Int?
@@ -58,12 +59,14 @@ public struct SalientText: View {
     public init(
         _ text: String,
         bionicEnabled: Bool? = nil,
+        style: ThemeTextStyle? = nil,
         font: Font = .headline,
         color: Color? = nil,
         lineLimit: Int? = nil
     ) {
         self.text = text
         self.bionicEnabled = bionicEnabled
+        self.style = style
         self.font = font
         self.color = color
         self.lineLimit = lineLimit
@@ -71,11 +74,20 @@ public struct SalientText: View {
 
     public var body: some View {
         let activeBionic = bionicEnabled ?? ADHOUSEDPreferences.shared.bionicReadingEnabled
-        Text(SalientTextFormatter.format(text, bionicEnabled: activeBionic, baseFont: font))
-            .font(font)
-            .fontDesign(theme.fontDesign)
-            .tracking(activeBionic ? 0.2 : 0)
-            .foregroundStyle(color ?? .primary)
+        let resolvedFont = style.map { theme.font($0) } ?? font
+        let baseTracking = style.map { theme.tracking(for: $0) } ?? (theme.fontDesign == .monospaced ? -0.15 : 0)
+
+        Text(SalientTextFormatter.format(text, bionicEnabled: activeBionic, baseFont: resolvedFont))
+            .font(resolvedFont)
+            .fontDesign(style == nil ? theme.fontDesign : nil)
+            .tracking(baseTracking + (activeBionic ? 0.15 : 0))
+            .foregroundStyle(color ?? theme.primaryInk)
+            .shadow(
+                color: .black.opacity(theme.isDark ? 0.28 : 0.0),
+                radius: 0.8,
+                x: 0,
+                y: 0.8
+            )
             .lineLimit(lineLimit)
             .fixedSize(horizontal: false, vertical: true)
     }

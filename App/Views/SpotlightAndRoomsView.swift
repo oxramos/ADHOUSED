@@ -33,7 +33,7 @@ struct SpotlightAndRoomsView: View {
         )
     }
 
-    /// Tasks due today for me (or everyone if `showEveryoneChores` is enabled or a specific room is selected).
+    /// Tasks due today for me (or everyone if `showEveryoneChores` is enabled or only 1 member).
     private var dueTodayPrimary: [(task: ChoreTask, snapshot: TaskFreshnessSnapshot)] {
         prioritizedAll.filter { pair in
             guard pair.snapshot.isActionableToday else { return false }
@@ -91,24 +91,27 @@ struct SpotlightAndRoomsView: View {
             return isQuietMode ? "Focus Today" : "Due Today"
         }()
 
+        let badgeColor = dueTodayPrimary.isEmpty ? theme.freshColor : theme.dueNowColor
+        let badgeLabel = dueTodayPrimary.isEmpty
+            ? (theme.isTerminalHUD ? "ALL DONE" : "All done")
+            : (theme.isTerminalHUD ? "\(dueTodayPrimary.count) DUE" : "\(dueTodayPrimary.count) due")
+
         return VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(sectionTitle)
-                    .font(isQuietMode ? .headline.weight(.bold) : .title3.weight(.heavy))
-                    .foregroundStyle(theme.primaryInk)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer()
-
-                Text(dueTodayPrimary.isEmpty ? "All done" : "\(dueTodayPrimary.count) due")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(dueTodayPrimary.isEmpty ? theme.freshColor : theme.dueNowColor)
+            DimensionalSectionHeader(title: sectionTitle, accentTint: badgeColor) {
+                Text(badgeLabel)
+                    .themeFont(.microTag, in: theme)
+                    .foregroundStyle(badgeColor)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 5)
                     .background(
-                        Capsule()
-                            .fill((dueTodayPrimary.isEmpty ? theme.freshColor : theme.dueNowColor).opacity(0.14))
+                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 5 : 99, style: .continuous)
+                            .fill(badgeColor.opacity(theme.isDark ? 0.17 : 0.12))
                     )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 5 : 99, style: .continuous)
+                            .strokeBorder(badgeColor.opacity(0.32), lineWidth: 0.9)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             if visibleDeck.isEmpty {
@@ -136,14 +139,15 @@ struct SpotlightAndRoomsView: View {
                     } label: {
                         HStack {
                             Image(systemName: session.showAllDueTasksInSpotlight ? "chevron.up.circle.fill" : "plus.circle.fill")
+                                .font(.system(size: 13, weight: .bold))
                             Text(
                                 session.showAllDueTasksInSpotlight
                                     ? "Show top \(cap) only"
                                     : "Show \(hiddenCount) more due today"
                             )
+                            .themeFont(.captionStrong, in: theme)
                             Spacer()
                         }
-                        .font(.caption.weight(.bold))
                         .foregroundStyle(theme.secondaryInk)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 11)
@@ -157,16 +161,14 @@ struct SpotlightAndRoomsView: View {
 
     private var calmCaughtUpCard: some View {
         let activeBreak = ADHOUSEDPreferences.shared.activeVacationBreak()
+        let tint = activeBreak != nil ? theme.warmingColor : theme.freshColor
 
         return HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill((activeBreak != nil ? theme.warmingColor : theme.freshColor).opacity(0.16))
-                    .frame(width: 44, height: 44)
-                Image(systemName: activeBreak?.iconSymbol ?? "checkmark.seal.fill")
-                    .font(.title3)
-                    .foregroundStyle(activeBreak != nil ? theme.warmingColor : theme.freshColor)
-            }
+            ChoreIconBadgeView(
+                iconSymbol: activeBreak?.iconSymbol ?? "omarchy:spark",
+                tint: tint,
+                size: 44
+            )
             VStack(alignment: .leading, spacing: 3) {
                 SalientText(
                     activeBreak != nil
@@ -176,7 +178,7 @@ struct SpotlightAndRoomsView: View {
                             : (session.lowSpoonsFilterEnabled
                                 ? "No quick 5-minute chores due right now!"
                                 : "You're all caught up for today!")),
-                    font: .subheadline.weight(.bold),
+                    style: .subheadlineStrong,
                     color: theme.primaryInk
                 )
                 Text(
@@ -184,17 +186,17 @@ struct SpotlightAndRoomsView: View {
                         ? "Chores and alerts resume \(activeBreak!.endDate.formatted(date: .abbreviated, time: .shortened))."
                         : "Everything on your list is taken care of."
                 )
-                .font(.caption)
+                .themeFont(.caption, in: theme)
                 .foregroundStyle(theme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
         .padding(15)
-        .adhousedCard(highlightTint: activeBreak != nil ? theme.warmingColor : theme.freshColor)
+        .adhousedCard(highlightTint: tint)
     }
 
-    // MARK: - 2. Partner's Turn Section (Crystal Clear Replacement for "Partner Turns")
+    // MARK: - 2. Partner's Turn Section
 
     private var partnerDueSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -206,14 +208,14 @@ struct SpotlightAndRoomsView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "person.2.fill")
-                        .font(.caption.weight(.bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(theme.accentSecondary)
                     Text("Assigned to Partner (\(dueForPartnerToday.count) due)")
-                        .font(.subheadline.weight(.bold))
+                        .themeFont(.subheadlineStrong, in: theme)
                         .foregroundStyle(theme.primaryInk)
                     Spacer()
                     Image(systemName: showPartnerSection ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(theme.secondaryInk)
                 }
                 .padding(.horizontal, 14)
@@ -239,7 +241,7 @@ struct SpotlightAndRoomsView: View {
         }
     }
 
-    // MARK: - 3. Not Due Yet Section (Crystal Clear Replacement for "Warming Up")
+    // MARK: - 3. Not Due Yet Section
 
     private var notDueYetSection: some View {
         let autoExpand = session.selectedRoom != nil
@@ -248,7 +250,7 @@ struct SpotlightAndRoomsView: View {
         return VStack(alignment: .leading, spacing: 10) {
             if autoExpand {
                 Text("Not Due Yet in \(session.selectedRoom!.title)")
-                    .font(.subheadline.weight(.bold))
+                    .themeFont(.subheadlineStrong, in: theme)
                     .foregroundStyle(theme.secondaryInk)
                     .padding(.top, 2)
             } else {
@@ -260,15 +262,15 @@ struct SpotlightAndRoomsView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "calendar")
-                            .font(.caption.weight(.bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(theme.freshColor)
                         Text("Not Due Yet · Coming Up Later (\(notDueYetItems.count))")
-                            .font(.subheadline.weight(.bold))
+                            .themeFont(.subheadlineStrong, in: theme)
                             .foregroundStyle(theme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         Image(systemName: showUpcomingDrawer ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.bold))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(theme.secondaryInk)
                     }
                     .padding(.horizontal, 14)

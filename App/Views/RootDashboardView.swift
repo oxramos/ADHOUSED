@@ -31,10 +31,37 @@ struct RootDashboardView: View {
         tasks.filter { !$0.isArchived }
     }
 
+    private var actionableDueTodayCount: Int {
+        FreshnessCalculator.sortedByUrgency(
+            tasks: activeUnarchivedTasks,
+            forMemberID: activeMember?.id
+        )
+        .filter { pair in
+            guard pair.snapshot.isActionableToday else { return false }
+            if session.showEveryoneChores || members.count <= 1 {
+                return true
+            }
+            return pair.task.isActionable(forMemberID: activeMember?.id)
+        }
+        .count
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
-            theme.canvasBackground
-                .ignoresSafeArea()
+            // Subtle atmospheric canvas depth so background never feels lifeless
+            ZStack {
+                theme.canvasBackground
+                RadialGradient(
+                    colors: [
+                        theme.accentPrimary.opacity(theme.isDark ? 0.08 : 0.045),
+                        Color.clear
+                    ],
+                    center: .topTrailing,
+                    startRadius: 20,
+                    endRadius: 340
+                )
+            }
+            .ignoresSafeArea()
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: prefs.quietModeEnabled ? 16 : 18) {
@@ -158,126 +185,167 @@ struct RootDashboardView: View {
         }
     }
 
-    // MARK: - 1. Top Header Bar (Zero Truncation + Lowkey Quiet Button + Partner Menu)
+    // MARK: - 1. Two-Tier Architectural Header (Zero Smooshing + Authentic Omarchy Lettering)
 
     private var topHeaderBar: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                if let householdName = household?.name, !householdName.isEmpty {
-                    Text(householdName.uppercased())
-                        .font(.system(size: 10.5, weight: .bold, design: theme.fontDesign))
-                        .tracking(0.9)
+        VStack(alignment: .leading, spacing: 10) {
+            // Row 1: Compact Household Kicker on Left + Fixed-Size Action Controls on Right
+            HStack(alignment: .center, spacing: 6) {
+                HStack(spacing: 5.5) {
+                    if theme.isTerminalHUD || theme.usesOmarchyBlockLettering {
+                        OmarchyPrismEmblemView(
+                            primary: theme.accentPrimary,
+                            secondary: theme.accentSecondary,
+                            height: 11
+                        )
+                        .fixedSize()
+                    } else {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [theme.accentPrimary, theme.accentSecondary],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 7, height: 7)
+                    }
+
+                    Text((household?.name.isEmpty == false ? household!.name : "Our Home").uppercased())
+                        .themeFont(.microTag, in: theme)
                         .foregroundStyle(theme.secondaryInk)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.76)
+                        .allowsTightening(true)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
-                SalientText(
-                    greetingTitle,
-                    font: .title2.weight(.heavy),
-                    color: theme.primaryInk,
-                    lineLimit: 2
+                .padding(.horizontal, 8.5)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 6 : 16, style: .continuous)
+                        .fill(theme.canvasSecondary.opacity(theme.isDark ? 0.72 : 0.65))
                 )
-            }
-            .layoutPriority(1)
-
-            Spacer(minLength: 6)
-
-            HStack(spacing: 7) {
-                // Lowkey, Always-Accessible Quiet / Minimal Mode Toggle
-                Button {
-                    HapticsEngine.shared.playMechanicalTap()
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                        prefs.quietModeEnabled.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: prefs.quietModeEnabled ? "leaf.fill" : "leaf")
-                            .font(.caption.weight(.bold))
-                        Text("Quiet")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(prefs.quietModeEnabled ? theme.onAccentPrimary : theme.secondaryInk)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 7 : 99, style: .continuous)
-                            .fill(prefs.quietModeEnabled ? theme.accentPrimary : theme.cardSurface)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 7 : 99, style: .continuous)
-                            .strokeBorder(prefs.quietModeEnabled ? theme.accentPrimary : theme.borderInk, lineWidth: 1.0)
-                    }
+                .overlay {
+                    RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 6 : 16, style: .continuous)
+                        .strokeBorder(theme.borderInk.opacity(0.65), lineWidth: 0.8)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(prefs.quietModeEnabled ? "Exit Quiet Mode" : "Switch to Quiet Minimal Mode")
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Household Member & iCloud Partner Sharing Menu (Compact Avatar so Header Never Truncates!)
-                Menu {
-                    if !members.isEmpty {
-                        Section("Who is using this iPhone?") {
-                            ForEach(members) { member in
-                                Button {
-                                    HapticsEngine.shared.playMechanicalTap()
-                                    prefs.activeMemberID = member.id
-                                    session.refreshWidgetsAndReminders(in: modelContext)
-                                } label: {
-                                    Label(
-                                        "\(member.emoji) \(member.displayName)",
-                                        systemImage: activeMember?.id == member.id ? "checkmark.circle.fill" : "circle"
-                                    )
+                // Right Control Cluster — Fixed-size so Quiet & Toolbar Icons NEVER Smoosh
+                HStack(spacing: 5) {
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                            prefs.quietModeEnabled.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: prefs.quietModeEnabled ? "leaf.fill" : "leaf")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Quiet")
+                                .themeFont(.pillLabel, in: theme)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .foregroundStyle(prefs.quietModeEnabled ? theme.onAccentPrimary : theme.primaryInk)
+                        .padding(.horizontal, 10)
+                        .frame(height: 33)
+                        .background(
+                            RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 7 : 99, style: .continuous)
+                                .fill(prefs.quietModeEnabled ? theme.accentPrimary : theme.cardSurface)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 7 : 99, style: .continuous)
+                                .strokeBorder(
+                                    prefs.quietModeEnabled ? theme.accentPrimary : theme.borderInk,
+                                    lineWidth: 1.0
+                                )
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityLabel(prefs.quietModeEnabled ? "Exit Quiet Mode" : "Switch to Quiet Minimal Mode")
+
+                    // Household Member & iCloud Partner Sharing Menu
+                    Menu {
+                        if !members.isEmpty {
+                            Section("Who is using this iPhone?") {
+                                ForEach(members) { member in
+                                    Button {
+                                        HapticsEngine.shared.playMechanicalTap()
+                                        prefs.activeMemberID = member.id
+                                        session.refreshWidgetsAndReminders(in: modelContext)
+                                    } label: {
+                                        Label(
+                                            "\(member.emoji) \(member.displayName)",
+                                            systemImage: activeMember?.id == member.id ? "checkmark.circle.fill" : "circle"
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    Divider()
-                    Button {
-                        session.presentingPartnerSharingSheet = true
+                        Divider()
+                        Button {
+                            session.presentingPartnerSharingSheet = true
+                        } label: {
+                            Label("Invite Partner / iCloud Sharing…", systemImage: "icloud.and.arrow.up.fill")
+                        }
                     } label: {
-                        Label("Invite Partner / iCloud Sharing…", systemImage: "icloud.and.arrow.up.fill")
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Text(activeMember?.emoji ?? "🏠")
-                            .font(.subheadline)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8.5, weight: .bold))
-                            .foregroundStyle(theme.secondaryInk)
-                    }
-                    .frame(height: 36)
-                    .padding(.horizontal, 9)
-                    .adhousedCard(compact: true)
-                }
-                .accessibilityLabel("Switch member or invite partner via iCloud")
-
-                // Vacation / Break Mode Button
-                let hasActivePause = prefs.activeVacationBreak() != nil || household?.isCurrentlyPausedAway() == true
-                let hasUpcomingBreak = prefs.nextUpcomingVacationBreak() != nil
-                Button {
-                    HapticsEngine.shared.playMechanicalTap()
-                    session.presentingVacationBreakSheet = true
-                } label: {
-                    Image(systemName: hasActivePause ? "pause.circle.fill" : (hasUpcomingBreak ? "calendar.badge.clock" : "suitcase.rolling.fill"))
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(hasActivePause ? theme.warmingColor : (hasUpcomingBreak ? theme.accentPrimary : theme.primaryInk))
-                        .frame(width: 36, height: 36)
-                        .adhousedCard(highlightTint: hasActivePause ? theme.warmingColor : nil, compact: true)
-                }
-                .accessibilityLabel("Vacation and Break Mode")
-
-                // Themes & Settings Button
-                Button {
-                    HapticsEngine.shared.playMechanicalTap()
-                    session.presentingSettingsSheet = true
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(theme.primaryInk)
-                        .frame(width: 36, height: 36)
+                        HStack(spacing: 2.5) {
+                            Text(activeMember?.emoji ?? "🏠")
+                                .font(.system(size: 13.5))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8.5, weight: .bold))
+                                .foregroundStyle(theme.secondaryInk)
+                        }
+                        .frame(height: 33)
+                        .padding(.horizontal, 7.5)
                         .adhousedCard(compact: true)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityLabel("Switch member or invite partner via iCloud")
+
+                    // Vacation / Break Mode Button
+                    let hasActivePause = prefs.activeVacationBreak() != nil || household?.isCurrentlyPausedAway() == true
+                    let hasUpcomingBreak = prefs.nextUpcomingVacationBreak() != nil
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        session.presentingVacationBreakSheet = true
+                    } label: {
+                        Image(systemName: hasActivePause ? "pause.circle.fill" : (hasUpcomingBreak ? "calendar.badge.clock" : "suitcase.rolling.fill"))
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(hasActivePause ? theme.warmingColor : (hasUpcomingBreak ? theme.accentPrimary : theme.primaryInk))
+                            .frame(width: 33, height: 33)
+                            .adhousedCard(highlightTint: hasActivePause ? theme.warmingColor : nil, compact: true)
+                    }
+                    .fixedSize()
+                    .accessibilityLabel("Vacation and Break Mode")
+
+                    // Themes & Settings Button
+                    Button {
+                        HapticsEngine.shared.playMechanicalTap()
+                        session.presentingSettingsSheet = true
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(theme.primaryInk)
+                            .frame(width: 33, height: 33)
+                            .adhousedCard(compact: true)
+                    }
+                    .fixedSize()
+                    .accessibilityLabel("Settings and Themes")
                 }
-                .accessibilityLabel("Settings and Themes")
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
             }
+
+            // Row 2: Full-Width Hero Title with Authentic Omarchy Lettering & Dimensional Depth
+            DimensionalHeroTitleView(
+                title: greetingTitle,
+                subtitle: heroSubtitleText,
+                lineLimit: 2
+            )
+            .padding(.top, 2)
         }
     }
 
@@ -286,6 +354,18 @@ struct RootDashboardView: View {
             return "\(name)'s Chores"
         }
         return "Home Chores"
+    }
+
+    private var heroSubtitleText: String {
+        if prefs.quietModeEnabled {
+            return actionableDueTodayCount == 0
+                ? "Quiet view · all caught up today"
+                : "Quiet view · \(actionableDueTodayCount) due today"
+        }
+        let duePart = actionableDueTodayCount == 0
+            ? "All caught up today"
+            : "\(actionableDueTodayCount) due today"
+        return "\(duePart) · \(prefs.themePreset.shortLabel)"
     }
 
     // MARK: - 2. Browse / Filter by Room RIGHT AT THE TOP
@@ -297,10 +377,10 @@ struct RootDashboardView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             if !populatedRooms.isEmpty {
-                HStack(alignment: .center) {
-                    Text("Filter by Room")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(theme.secondaryInk)
+                HStack(alignment: .center, spacing: 8) {
+                    Text(theme.isTerminalHUD ? "[ FILTER BY ROOM ]" : "Filter by Room")
+                        .themeFont(.microTag, in: theme)
+                        .foregroundStyle(theme.isTerminalHUD ? theme.accentPrimary : theme.secondaryInk)
 
                     Spacer()
 
@@ -311,8 +391,9 @@ struct RootDashboardView: View {
                                 session.selectedRoom = nil
                             }
                         }
-                        .font(.caption.weight(.bold))
+                        .themeFont(.captionStrong, in: theme)
                         .foregroundStyle(theme.accentPrimary)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
 
                     if !prefs.quietModeEnabled {
@@ -324,20 +405,25 @@ struct RootDashboardView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: session.showRoomHealthGrid ? "chevron.up" : "square.grid.2x2")
-                                    .font(.caption2.weight(.bold))
+                                    .font(.system(size: 10, weight: .bold))
                                 Text(session.showRoomHealthGrid ? "Compact" : "Overview")
-                                    .font(.caption2.weight(.bold))
+                                    .themeFont(.microTag, in: theme)
+                                    .lineLimit(1)
                             }
                             .foregroundStyle(theme.secondaryInk)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(theme.canvasSecondary))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: theme.isTerminalHUD ? 5 : 99, style: .continuous)
+                                    .fill(theme.canvasSecondary)
+                            )
                         }
                         .buttonStyle(.plain)
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                 }
 
-                // Instant 1-Tap Room Filter Pills
+                // Instant 1-Tap Room Filter Pills (Width-Normalized Across All Fonts)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         Button {
@@ -347,9 +433,11 @@ struct RootDashboardView: View {
                             }
                         } label: {
                             Text("All Rooms")
-                                .font(.caption.weight(.heavy))
+                                .themeFont(.pillLabel, in: theme)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 13)
-                                .padding(.vertical, 9)
+                                .frame(height: 34)
                         }
                         .buttonStyle(
                             TactileActionButtonStyle(
@@ -371,33 +459,37 @@ struct RootDashboardView: View {
                             } label: {
                                 HStack(spacing: 6) {
                                     if theme.isTerminalHUD || prefs.iconStylePreference == .omarchyPixelHUD {
-                                        OmarchyPixelGlyphView(
+                                        StylizedVectorGlyphView(
                                             glyphKey: String(room.omarchyIconKey.dropFirst("omarchy:".count)),
-                                            color: isSelected ? .white : roomTint,
-                                            pixelSize: 1.35
+                                            primaryColor: isSelected ? .white : roomTint,
+                                            secondaryColor: isSelected ? .white.opacity(0.85) : theme.accentSecondary,
+                                            glyphSize: 15
                                         )
                                     } else {
                                         Image(systemName: room.symbolName)
-                                            .font(.caption.weight(.bold))
+                                            .font(.system(size: 12, weight: .bold))
                                             .foregroundStyle(isSelected ? .white : roomTint)
                                     }
 
                                     Text(room.shortTitle)
-                                        .font(.caption.weight(.bold))
+                                        .themeFont(.pillLabel, in: theme)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
 
                                     if health.dueCount > 0 {
                                         Text("\(health.dueCount)")
-                                            .font(.system(size: 10, weight: .black, design: theme.fontDesign))
+                                            .themeFont(.microTag, in: theme)
                                             .foregroundStyle(isSelected ? roomTint : .white)
                                             .padding(.horizontal, 5.5)
                                             .padding(.vertical, 1.5)
                                             .background(
                                                 Capsule().fill(isSelected ? .white : theme.dueNowColor)
                                             )
+                                            .fixedSize()
                                     }
                                 }
                                 .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                                .frame(height: 34)
                             }
                             .buttonStyle(
                                 TactileActionButtonStyle(
@@ -436,29 +528,30 @@ struct RootDashboardView: View {
         } label: {
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
-                    ChoreIconBadgeView(iconSymbol: room.symbolName, tint: roomColor, size: 32)
+                    ChoreIconBadgeView(iconSymbol: room.symbolName, tint: roomColor, size: 34)
                     Spacer()
                     if health.dueCount > 0 {
                         Text("\(health.dueCount) due")
-                            .font(.caption2.weight(.heavy))
+                            .themeFont(.microTag, in: theme)
                             .foregroundStyle(.white)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(Capsule().fill(theme.dueNowColor))
+                            .fixedSize()
                     } else {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(theme.freshColor)
-                            .font(.subheadline)
+                            .font(.system(size: 15, weight: .bold))
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(room.title)
-                        .font(.subheadline.weight(.bold))
+                        .themeFont(.subheadlineStrong, in: theme)
                         .foregroundStyle(theme.primaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("\(health.totalCount) \(health.totalCount == 1 ? "chore" : "chores")")
-                        .font(.caption2)
+                        .themeFont(.caption, in: theme)
                         .foregroundStyle(theme.secondaryInk)
                 }
 
@@ -478,12 +571,11 @@ struct RootDashboardView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - 3. Clean Sub-Filter & View Row (Plain English, Zero Clutter)
+    // MARK: - 3. Clean Sub-Filter & View Row (Width-Stable Across All Themes)
 
     private var filterAndViewControlRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                // Quick & Easy (<= 5 min) Filter — replaces cryptic "Low Spoons"!
                 Button {
                     HapticsEngine.shared.playMechanicalTap()
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
@@ -492,12 +584,14 @@ struct RootDashboardView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "leaf.fill")
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 10.5, weight: .bold))
                         Text("Quick & Easy (≤5m)")
-                            .font(.caption.weight(.bold))
+                            .themeFont(.pillLabel, in: theme)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .frame(height: 33)
                 }
                 .buttonStyle(
                     TactileActionButtonStyle(
@@ -506,7 +600,6 @@ struct RootDashboardView: View {
                     )
                 )
 
-                // My Turn vs Everyone toggle when sharing with partner
                 if members.count > 1 {
                     Button {
                         HapticsEngine.shared.playMechanicalTap()
@@ -516,12 +609,14 @@ struct RootDashboardView: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: session.showEveryoneChores ? "person.2.fill" : "person.fill")
-                                .font(.caption2.weight(.bold))
+                                .font(.system(size: 10.5, weight: .bold))
                             Text(session.showEveryoneChores ? "Showing Everyone" : "My Turn Only")
-                                .font(.caption.weight(.bold))
+                                .themeFont(.pillLabel, in: theme)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .frame(height: 33)
                     }
                     .buttonStyle(
                         TactileActionButtonStyle(
@@ -531,7 +626,6 @@ struct RootDashboardView: View {
                     )
                 }
 
-                // Focus List vs Battery View toggle
                 Button {
                     HapticsEngine.shared.playMechanicalTap()
                     withAnimation(.spring(response: 0.26, dampingFraction: 0.82)) {
@@ -540,21 +634,22 @@ struct RootDashboardView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: prefs.layoutMode.symbolName)
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 10.5, weight: .bold))
                         Text(prefs.layoutMode.shortLabel)
-                            .font(.caption.weight(.bold))
+                            .themeFont(.pillLabel, in: theme)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .frame(height: 33)
                 }
                 .buttonStyle(TactileActionButtonStyle(fill: theme.cardSurface, foreground: theme.primaryInk))
 
-                // Quick Theme & Color Customizer Menu
                 Menu {
                     Button {
                         session.customizingThemePreset = prefs.themePreset
                     } label: {
-                        Label("Customize \(prefs.themePreset.shortLabel) Colors…", systemImage: "eyedropper.halffull")
+                        Label("Customize \(prefs.themePreset.shortLabel) Colors & Type…", systemImage: "eyedropper.halffull")
                     }
                     Divider()
                     ForEach(ThemeFamily.allCases) { family in
@@ -582,25 +677,28 @@ struct RootDashboardView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: theme.isTerminalHUD ? "terminal.fill" : "paintpalette.fill")
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 10.5, weight: .bold))
                             .foregroundStyle(theme.accentPrimary)
                         Text(prefs.themePreset.shortLabel)
-                            .font(.caption.weight(.bold))
+                            .themeFont(.pillLabel, in: theme)
                             .foregroundStyle(theme.primaryInk)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 8.5, weight: .bold))
                             .foregroundStyle(theme.secondaryInk)
                     }
                     .padding(.horizontal, 11)
-                    .padding(.vertical, 8)
+                    .frame(height: 33)
                     .adhousedCard(compact: true)
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.vertical, 2)
         }
     }
 
-    // MARK: - 4. Vacation / Break Mode Status Banner (Wrapping, Zero Truncation)
+    // MARK: - 4. Vacation / Break Mode Status Banner
 
     @ViewBuilder
     private var awayPauseStatusBanner: some View {
@@ -612,11 +710,11 @@ struct RootDashboardView: View {
                         .foregroundStyle(theme.warmingColor)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(activeBreak.title) — Chores & Alerts Paused")
-                            .font(.subheadline.weight(.heavy))
+                            .themeFont(.subheadlineStrong, in: theme)
                             .foregroundStyle(theme.primaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(activeBreak.formattedRangeSummary())
-                            .font(.caption.weight(.semibold))
+                            .themeFont(.captionStrong, in: theme)
                             .foregroundStyle(theme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -629,7 +727,8 @@ struct RootDashboardView: View {
                         session.presentingVacationBreakSheet = true
                     } label: {
                         Text("Edit Dates")
-                            .font(.caption.weight(.bold))
+                            .themeFont(.pillLabel, in: theme)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
                     }
@@ -640,7 +739,8 @@ struct RootDashboardView: View {
                         try? TaskActionService.clearAwayPause(in: modelContext)
                     } label: {
                         Text("I'm Back")
-                            .font(.caption.weight(.heavy))
+                            .themeFont(.pillLabel, in: theme)
+                            .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 13)
                             .padding(.vertical, 7)
                     }
@@ -656,10 +756,10 @@ struct RootDashboardView: View {
                     .foregroundStyle(theme.warmingColor)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Reminders Paused")
-                        .font(.subheadline.weight(.bold))
+                        .themeFont(.subheadlineStrong, in: theme)
                         .foregroundStyle(theme.primaryInk)
                     Text("Resumes at \(pauseUntil.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption)
+                        .themeFont(.caption, in: theme)
                         .foregroundStyle(theme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -669,7 +769,8 @@ struct RootDashboardView: View {
                     try? TaskActionService.clearAwayPause(in: modelContext)
                 } label: {
                     Text("Resume")
-                        .font(.caption.weight(.bold))
+                        .themeFont(.pillLabel, in: theme)
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                 }
@@ -684,11 +785,11 @@ struct RootDashboardView: View {
                     .foregroundStyle(theme.accentPrimary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Upcoming Break: \(upcoming.title)")
-                        .font(.subheadline.weight(.bold))
+                        .themeFont(.subheadlineStrong, in: theme)
                         .foregroundStyle(theme.primaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(upcoming.formattedRangeSummary())
-                        .font(.caption)
+                        .themeFont(.caption, in: theme)
                         .foregroundStyle(theme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -698,7 +799,8 @@ struct RootDashboardView: View {
                     session.presentingVacationBreakSheet = true
                 } label: {
                     Text("Edit")
-                        .font(.caption.weight(.bold))
+                        .themeFont(.pillLabel, in: theme)
+                        .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, 11)
                         .padding(.vertical, 7)
                 }
@@ -709,20 +811,19 @@ struct RootDashboardView: View {
         }
     }
 
-    // MARK: - 5. Subtle Weekly Progress Card (Placed Calmly Below Chores)
+    // MARK: - 5. Subtle Weekly Progress Card
 
     private var momentumPulseStrip: some View {
         let stats = FreshnessCalculator.momentumStats(completions: completions)
 
         return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("THIS WEEK")
-                    .font(.system(size: 10, weight: .heavy, design: theme.fontDesign))
-                    .tracking(0.8)
+                Text(theme.isTerminalHUD ? "[ THIS WEEK ]" : "THIS WEEK")
+                    .themeFont(.microTag, in: theme)
                     .foregroundStyle(theme.accentPrimary)
                 SalientText(
                     stats.headline,
-                    font: .footnote.weight(.semibold),
+                    style: .captionStrong,
                     color: theme.primaryInk,
                     lineLimit: nil
                 )
@@ -741,7 +842,7 @@ struct RootDashboardView: View {
         .adhousedCard(compact: true)
     }
 
-    // MARK: - 6. Bottom Floating Dock (Undo Toast + Active Timer + Catalog & New Chore)
+    // MARK: - 6. Bottom Floating Dock
 
     private var bottomFloatingDock: some View {
         VStack(spacing: 10) {
@@ -751,7 +852,7 @@ struct RootDashboardView: View {
                         .foregroundStyle(theme.freshColor)
                         .font(.title3)
                     Text("Completed **\(toast.taskTitle)**")
-                        .font(.subheadline)
+                        .themeFont(.body, in: theme)
                         .foregroundStyle(theme.primaryInk)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -759,8 +860,9 @@ struct RootDashboardView: View {
                     Button("Undo") {
                         session.performUndoToast(in: modelContext)
                     }
-                    .font(.subheadline.weight(.heavy))
+                    .themeFont(.subheadlineStrong, in: theme)
                     .foregroundStyle(theme.accentSecondary)
+                    .fixedSize(horizontal: true, vertical: false)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -776,16 +878,16 @@ struct RootDashboardView: View {
                     let secs = remaining % 60
                     HStack(spacing: 12) {
                         Image(systemName: "timer")
-                            .font(.headline.weight(.bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(theme.warmingColor)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Focus Timer: \(sprint.taskTitle)")
-                                .font(.caption.weight(.bold))
+                                .themeFont(.captionStrong, in: theme)
                                 .foregroundStyle(theme.primaryInk)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(remaining > 0 ? String(format: "%d:%02d left", mins, secs) : "Timer finished — tap Done!")
-                                .font(.caption2.weight(.semibold))
+                                .themeFont(.caption, in: theme)
                                 .foregroundStyle(theme.secondaryInk)
                         }
                         Spacer(minLength: 6)
@@ -795,8 +897,9 @@ struct RootDashboardView: View {
                             }
                         } label: {
                             Text("Open")
-                                .font(.caption.weight(.bold))
-                                .padding(.horizontal, 10)
+                                .themeFont(.pillLabel, in: theme)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
                         }
                         .buttonStyle(TactileActionButtonStyle(fill: theme.warmingColor, foreground: Color(hex: "#111216")))
@@ -815,11 +918,14 @@ struct RootDashboardView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "books.vertical.fill")
+                            .font(.system(size: 13.5, weight: .bold))
                         Text("Catalog")
+                            .themeFont(.subheadlineStrong, in: theme)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
-                    .font(.subheadline.weight(.bold))
-                    .padding(.horizontal, 15)
-                    .padding(.vertical, 13)
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
                 }
                 .buttonStyle(TactileActionButtonStyle(fill: theme.cardSurface, foreground: theme.primaryInk))
 
@@ -831,12 +937,14 @@ struct RootDashboardView: View {
                 } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.headline)
+                            .font(.system(size: 15, weight: .bold))
                         Text("Add Chore")
-                            .font(.subheadline.weight(.heavy))
+                            .themeFont(.subheadlineStrong, in: theme)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 20)
-                    .padding(.vertical, 13)
+                    .frame(height: 44)
                 }
                 .buttonStyle(
                     TactileActionButtonStyle(

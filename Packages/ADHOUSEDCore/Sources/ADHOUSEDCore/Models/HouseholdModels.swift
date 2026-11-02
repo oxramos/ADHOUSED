@@ -313,7 +313,34 @@ public enum LayoutUsabilityMode: String, Codable, CaseIterable, Identifiable, Se
     }
 }
 
-// MARK: - Icon Style Packs & Per-Theme Color Customization
+// MARK: - Icon Style Packs, Display Lettering & Per-Theme Color Customization
+
+public enum DisplayLetteringStyle: String, Codable, CaseIterable, Identifiable, Sendable {
+    case autoTheme
+    case omarchyBlock
+    case dimensionalModern
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .autoTheme: return "Match Theme"
+        case .omarchyBlock: return "Omarchy Block"
+        case .dimensionalModern: return "Modern Dimensional"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .autoTheme:
+            return "Uses authentic Omarchy block-built display lettering & JetBrains Mono on Omarchy themes, and sculpted editorial type on Calm/Modern themes."
+        case .omarchyBlock:
+            return "Uses Omarchy's signature block-chiseled display lettering for hero headers across every theme."
+        case .dimensionalModern:
+            return "Uses clean, dimensional modern typography with tonal depth across every theme."
+        }
+    }
+}
 
 public enum IconStylePreference: String, Codable, CaseIterable, Identifiable, Sendable {
     case autoTheme
@@ -327,25 +354,25 @@ public enum IconStylePreference: String, Codable, CaseIterable, Identifiable, Se
     public var title: String {
         switch self {
         case .autoTheme: return "Match Theme"
-        case .omarchyPixelHUD: return "Omarchy Pixel"
-        case .minimalOutline: return "Minimal Line"
-        case .softMedallion: return "Soft Tinted"
-        case .boldBadge: return "Solid Badge"
+        case .omarchyPixelHUD: return "Omarchy Cyber Vector"
+        case .minimalOutline: return "Architectural Line"
+        case .softMedallion: return "Duotone Glass"
+        case .boldBadge: return "Dimensional Prism"
         }
     }
 
     public var subtitle: String {
         switch self {
         case .autoTheme:
-            return "Automatically uses Omarchy pixel glyphs on Omarchy themes, minimal strokes on Quiet themes, and soft badges elsewhere."
+            return "Automatically uses sleek Omarchy geometric vector glyphs on Omarchy themes, fine architectural lines on Quiet themes, and duotone glass medallions elsewhere."
         case .omarchyPixelHUD:
-            return "Crisp custom pixel-matrix & Waybar bracket glyphs across all chores and rooms."
+            return "Modern stylized vector & duotone glyphs framed in precision 45° gradient HUD tiles."
         case .minimalOutline:
-            return "Clean, low-noise architectural outlines with subtle borders."
+            return "Clean, low-noise architectural vector strokes with whisper-light borders."
         case .softMedallion:
-            return "Cozy rounded pastel-tinted medallions."
+            return "Layered duotone glass medallions with soft radial tint and top-lit rim sheen."
         case .boldBadge:
-            return "High-contrast filled color tiles for quick visual scanning."
+            return "High-contrast gradient prism tiles for instant visual scanning."
         }
     }
 }
@@ -572,7 +599,7 @@ public enum ThemePreset: String, Codable, CaseIterable, Identifiable, Sendable {
         case .chunkyNeoBrutalistPop:
             return "Crisp tactile borders and cheerful color blocks for high-energy days"
         case .omarchyQuattro:
-            return "Classic Hyprland Tokyo Night #1A1B26 with periwinkle blue, violet & pixel HUD glyphs"
+            return "Classic Hyprland Tokyo Night #1A1B26 with Omarchy lettering, JetBrains Mono & cyber-vector icons"
         case .omarchyCatppuccin:
             return "Beloved Catppuccin Mocha velvet (#1E1E2E) with lavender, peach & mint (Latte in Light)"
         case .omarchyKanagawa:
@@ -1289,6 +1316,7 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         static let layoutMode = "adhoused.layoutMode"
         static let quietModeEnabled = "adhoused.quietModeEnabled"
         static let iconStylePreference = "adhoused.iconStylePreference"
+        static let displayLetteringStyle = "adhoused.displayLetteringStyle"
         static let bionicReading = "adhoused.bionicReading"
         static let hapticsEnabled = "adhoused.hapticsEnabled"
         static let activeMemberID = "adhoused.activeMemberID"
@@ -1319,6 +1347,10 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
 
     public var iconStylePreference: IconStylePreference {
         didSet { defaults.set(iconStylePreference.rawValue, forKey: Keys.iconStylePreference) }
+    }
+
+    public var displayLetteringStyle: DisplayLetteringStyle {
+        didSet { defaults.set(displayLetteringStyle.rawValue, forKey: Keys.displayLetteringStyle) }
     }
 
     public var bionicReadingEnabled: Bool {
@@ -1380,6 +1412,7 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         self.layoutMode = LayoutUsabilityMode(rawValue: defaults.string(forKey: Keys.layoutMode) ?? "") ?? .spotlightAndRooms
         self.quietModeEnabled = defaults.object(forKey: Keys.quietModeEnabled) as? Bool ?? false
         self.iconStylePreference = IconStylePreference(rawValue: defaults.string(forKey: Keys.iconStylePreference) ?? "") ?? .autoTheme
+        self.displayLetteringStyle = DisplayLetteringStyle(rawValue: defaults.string(forKey: Keys.displayLetteringStyle) ?? "") ?? .autoTheme
         self.bionicReadingEnabled = defaults.object(forKey: Keys.bionicReading) as? Bool ?? false
         self.hapticsEnabled = defaults.object(forKey: Keys.hapticsEnabled) as? Bool ?? true
         if let str = defaults.string(forKey: Keys.activeMemberID) {
@@ -1497,6 +1530,9 @@ public final class ADHOUSEDPreferences: @unchecked Sendable {
         quietModeEnabled = defaults.object(forKey: Keys.quietModeEnabled) as? Bool ?? false
         if let iconPref = IconStylePreference(rawValue: defaults.string(forKey: Keys.iconStylePreference) ?? "") {
             iconStylePreference = iconPref
+        }
+        if let letteringPref = DisplayLetteringStyle(rawValue: defaults.string(forKey: Keys.displayLetteringStyle) ?? "") {
+            displayLetteringStyle = letteringPref
         }
         bionicReadingEnabled = defaults.object(forKey: Keys.bionicReading) as? Bool ?? false
         hapticsEnabled = defaults.object(forKey: Keys.hapticsEnabled) as? Bool ?? true

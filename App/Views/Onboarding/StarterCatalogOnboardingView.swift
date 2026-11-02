@@ -67,12 +67,12 @@ struct StarterCatalogOnboardingView: View {
                 }
             }
 
-            SalientText(
-                isInitialOnboarding
-                    ? "Pick the household chores you want to track."
+            DimensionalHeroTitleView(
+                title: isInitialOnboarding ? "ADHOUSED" : "Chore Catalog",
+                subtitle: isInitialOnboarding
+                    ? "Pick the household chores you want to track"
                     : "Tap chores to add to your rooms",
-                font: .title2.weight(.heavy),
-                color: theme.primaryInk
+                lineLimit: 2
             )
 
             Text("Pre-filled with realistic schedules and quick time estimates. You can add custom chores or invite your partner via iCloud anytime.")

@@ -33,19 +33,14 @@ struct FreshnessBatteryStreamView: View {
         let stillFresh = prioritizedStream.filter { !$0.snapshot.isActionableToday && $0.snapshot.batteryFill > 0.55 }
 
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                HStack(spacing: 7) {
-                    Image(systemName: "battery.50percent")
-                        .foregroundStyle(theme.warmingColor)
-                    Text(session.selectedRoom != nil ? "\(session.selectedRoom!.title) — Battery View" : "Chore Battery Levels")
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(theme.primaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 6)
-                Text("Lowest first")
-                    .font(.caption2.weight(.semibold))
+            DimensionalSectionHeader(
+                title: session.selectedRoom != nil ? "\(session.selectedRoom!.title) — Battery View" : "Chore Battery Levels",
+                accentTint: theme.warmingColor
+            ) {
+                Text(theme.isTerminalHUD ? "LOWEST FIRST" : "Lowest first")
+                    .themeFont(.microTag, in: theme)
                     .foregroundStyle(theme.secondaryInk)
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             if activeDepleting.isEmpty {
@@ -54,7 +49,7 @@ struct FreshnessBatteryStreamView: View {
                         .font(.title2)
                         .foregroundStyle(theme.freshColor)
                     Text("Every chore in this view is well-charged right now!")
-                        .font(.subheadline.weight(.bold))
+                        .themeFont(.subheadlineStrong, in: theme)
                         .foregroundStyle(theme.primaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -86,12 +81,12 @@ struct FreshnessBatteryStreamView: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(theme.freshColor)
                             Text("Not Due Yet · Well Charged (\(stillFresh.count))")
-                                .font(.subheadline.weight(.bold))
+                                .themeFont(.subheadlineStrong, in: theme)
                                 .foregroundStyle(theme.secondaryInk)
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer()
                             Image(systemName: showStillFreshDrawer ? "chevron.up" : "chevron.down")
-                                .font(.caption.weight(.bold))
+                                .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(theme.secondaryInk)
                         }
                         .padding(14)
@@ -109,7 +104,7 @@ struct FreshnessBatteryStreamView: View {
                                 activeMember: activeMember,
                                 displayStyle: .batteryStreamRow
                             )
-                            .opacity(0.82)
+                            .opacity(0.84)
                         }
                     }
                 }

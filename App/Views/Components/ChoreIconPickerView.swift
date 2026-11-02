@@ -13,7 +13,7 @@ struct ChoreIconPickerView: View {
     private let quickCuratedIDs: [String] = [
         "sparkles", "dishwasher.fill", "washer.fill", "bed.double.fill",
         "trash.fill", "shower.fill", "pawprint.fill", "leaf.fill",
-        "omarchy:ghost", "omarchy:arch", "omarchy:dishes", "omarchy:cat"
+        "omarchy:prism", "omarchy:terminal", "omarchy:dishes", "omarchy:cat"
     ]
 
     var body: some View {
@@ -108,10 +108,11 @@ struct ChoreIconPickerView: View {
                                     styleOverride: selectedPack == .omarchyPixel ? .omarchyPixelHUD : nil
                                 )
                                 Text(choice.label)
-                                    .font(.system(size: 10, weight: .semibold, design: theme.fontDesign))
+                                    .font(.system(size: theme.fontDesign == .monospaced ? 9.2 : 10, weight: .semibold, design: theme.fontDesign))
                                     .foregroundStyle(selectedIcon == choice.id ? theme.accentPrimary : theme.secondaryInk)
                                     .multilineTextAlignment(.center)
                                     .lineLimit(2)
+                                    .minimumScaleFactor(0.82)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             .frame(maxWidth: .infinity)
@@ -149,9 +150,9 @@ struct ChoreIconPickerView: View {
     private var defaultQuickChoices: [String] {
         if theme.preset.isOmarchyQuattroStyle || ADHOUSEDPreferences.shared.iconStylePreference == .omarchyPixelHUD {
             return [
-                "omarchy:spark", "omarchy:dishes", "omarchy:washer", "omarchy:bed",
-                "omarchy:trash", "omarchy:shower", "omarchy:plant", "omarchy:cat",
-                "omarchy:desk", "omarchy:ghost", "omarchy:arch", "omarchy:wave"
+                "omarchy:prism", "omarchy:spark", "omarchy:dishes", "omarchy:washer",
+                "omarchy:bed", "omarchy:trash", "omarchy:shower", "omarchy:plant",
+                "omarchy:cat", "omarchy:desk", "omarchy:terminal", "omarchy:arch"
             ]
         }
         return quickCuratedIDs

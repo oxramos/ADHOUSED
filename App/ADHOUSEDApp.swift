@@ -134,6 +134,7 @@ struct ADHOUSEDApp: App {
     @State private var prefs = ADHOUSEDPreferences.shared
 
     init() {
+        ADHOUSEDFontRegistry.registerFontsIfNeeded()
         let resolvedContainer: ModelContainer
         do {
             resolvedContainer = try SharedAppGroup.makeModelContainer()
