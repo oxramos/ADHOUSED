@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+.derivedData/
+.derivedData-device/
+.build-release/
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+AuthKey_*.p8
+*.p8

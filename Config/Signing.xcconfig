@@ -1,0 +1,11 @@
+// ADHOUSED Centralized Signing & App Group Configuration
+// Configured for Oscar Ramos (Apple Developer Team J8664SRP8Y)
+
+ADHOUSED_BUNDLE_PREFIX = com.oxramos.adhoused
+ADHOUSED_APP_GROUP = group.com.oxramos.adhoused
+ADHOUSED_ICLOUD_CONTAINER = iCloud.com.oxramos.adhoused
+
+DEVELOPMENT_TEAM = J8664SRP8Y
+CODE_SIGN_STYLE = Automatic
+IPHONEOS_DEPLOYMENT_TARGET = 26.1
+SWIFT_VERSION = 6.0
